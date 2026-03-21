@@ -54,6 +54,7 @@ func (a App) viewHelp() string {
 		{"→ / enter", "View diff for file"},
 		{"o", "Open file in VS Code"},
 		{"a", "View all diffs (integrated)"},
+		{"/", "Search/filter files"},
 		{"g", "Git status (uncommitted changes)"},
 		{"x", "Toggle reviewed checkmark"},
 		{"← / esc", "Back to worktree list"},
