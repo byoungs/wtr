@@ -65,9 +65,9 @@ func (a App) updateGitStatus(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.confirmRevert {
 			if msg.String() == "y" {
 				a.confirmRevert = false
-				wt := a.worktrees[a.selectedWorktree]
+				wtPath := a.currentWorktreePath()
 				entry := a.statusFiles[a.statusCursor]
-				fullPath := filepath.Join(wt.Path, entry.Path)
+				fullPath := filepath.Join(wtPath, entry.Path)
 
 				if entry.IsUntracked() {
 					if err := os.RemoveAll(fullPath); err != nil {
@@ -76,7 +76,7 @@ func (a App) updateGitStatus(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return a, nil
 					}
 				} else {
-					out, err := exec.Command("git", "-C", wt.Path, "checkout", "--", entry.Path).CombinedOutput()
+					out, err := exec.Command("git", "-C", wtPath, "checkout", "--", entry.Path).CombinedOutput()
 					if err != nil {
 						a.err = fmt.Errorf("revert %s: %s", entry.Path, strings.TrimSpace(string(out)))
 						a.confirmRevert = false
@@ -85,7 +85,7 @@ func (a App) updateGitStatus(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				// Reload status
-				a.statusFiles = loadGitStatus(wt.Path)
+				a.statusFiles = loadGitStatus(wtPath)
 				if a.statusCursor >= len(a.statusFiles) {
 					a.statusCursor = max(0, len(a.statusFiles)-1)
 				}
@@ -110,11 +110,11 @@ func (a App) updateGitStatus(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, keys.Right), key.Matches(msg, keys.Enter):
 			if len(a.statusFiles) > 0 {
-				wt := a.worktrees[a.selectedWorktree]
+				wtPath := a.currentWorktreePath()
 				// Load diffs for ALL status files so ]/[ navigation works
 				var allFiles []git.FileDiff
 				for _, entry := range a.statusFiles {
-					diffs, err := git.GetWorkingDiff(wt.Path, entry.Path)
+					diffs, err := git.GetWorkingDiff(wtPath, entry.Path)
 					if err != nil {
 						continue
 					}
@@ -132,13 +132,19 @@ func (a App) updateGitStatus(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, keys.Open):
 			if len(a.statusFiles) > 0 {
-				wt := a.worktrees[a.selectedWorktree]
+				wtPath := a.currentWorktreePath()
 				entry := a.statusFiles[a.statusCursor]
-				fullPath := filepath.Join(wt.Path, entry.Path)
+				fullPath := filepath.Join(wtPath, entry.Path)
 				exec.Command("code", "--goto", fullPath).Start()
 			}
 		case key.Matches(msg, keys.Back):
-			a.screen = screenFileList
+			if a.prevScreen == screenWorktreeList {
+				a.screen = screenWorktreeList
+			} else if a.mode == "direct" && a.prevScreen == screenDirectLanding {
+				a.screen = screenDirectLanding
+			} else {
+				a.screen = screenFileList
+			}
 			statusScrollY = 0
 		}
 	}
@@ -148,8 +154,13 @@ func (a App) updateGitStatus(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (a App) viewGitStatus() string {
 	var b strings.Builder
 
-	wt := a.worktrees[a.selectedWorktree]
-	title := styleTitle.Width(a.width).Render(fmt.Sprintf("Git Status — %s", wt.Branch))
+	var branchName string
+	if a.selectedWorktree < len(a.worktrees) {
+		branchName = a.worktrees[a.selectedWorktree].Branch
+	} else {
+		branchName = "main"
+	}
+	title := styleTitle.Width(a.width).Render(fmt.Sprintf("Git Status — %s", branchName))
 	b.WriteString(title + "\n")
 
 	if len(a.statusFiles) == 0 {
@@ -217,7 +228,7 @@ func (a App) viewGitStatus() string {
 		b.WriteString(styleFail.Render(fmt.Sprintf("  %s %s? (y/n)", action, entry.Path)) + "\n")
 	}
 
-	b.WriteString(styleHelp.Render("  q:quit  ←back  →view  del:revert  o:open"))
+	b.WriteString(styleHelp.Render("  q:quit  ←back  →view  del:revert  e:edit"))
 
 	return b.String()
 }

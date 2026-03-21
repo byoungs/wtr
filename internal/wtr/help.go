@@ -28,45 +28,65 @@ func (a App) viewHelp() string {
 	b.WriteString("  " + styleRunning.Render("△N") + " " + desc.Render("N uncommitted changes in worktree") + "\n")
 
 	b.WriteString("\n")
-	b.WriteString(heading.Render("  Worktree List") + "\n\n")
 
-	keys := [][2]string{
-		{"→ / enter", "Review files in worktree"},
-		{"o", "Open worktree in VS Code"},
-		{"t", "Run make test e2e (background)"},
-		{"v", "View test/validate output"},
-		{"r", "Rebase on main"},
-		{"s", "Squash to 1 commit on main"},
-		{"l", "Land (merge + test + validate + push)"},
-		{"u", "Refresh worktree state"},
-		{"del", "Delete worktree"},
-		{"h / ?", "This help screen"},
-		{"q", "Quit"},
-	}
-	for _, kv := range keys {
-		b.WriteString("  " + label.Render(kv[0]) + desc.Render(kv[1]) + "\n")
+	var helpKeys [][2]string
+
+	if a.mode == "direct" {
+		b.WriteString(heading.Render("  Review (Direct Mode)") + "\n\n")
+		directKeys := [][2]string{
+			{"→ / enter", "Review changed files"},
+			{"g", "Git status (uncommitted changes)"},
+			{"t", "Run make validate (background)"},
+			{"o", "View test/validate output"},
+			{"l", "Push to origin (test + validate + push)"},
+			{"u", "Refresh"},
+			{"h / ?", "This help screen"},
+			{"q", "Quit"},
+		}
+		for _, kv := range directKeys {
+			b.WriteString("  " + label.Render(kv[0]) + desc.Render(kv[1]) + "\n")
+		}
+	} else {
+		b.WriteString(heading.Render("  Worktree List") + "\n\n")
+
+		helpKeys = [][2]string{
+			{"→ / enter", "Review files in worktree"},
+			{"e", "Edit worktree in VS Code"},
+			{"t", "Run make test e2e (background)"},
+			{"o", "View test/validate output"},
+			{"r", "Rebase on main"},
+			{"s", "Squash to 1 commit on main"},
+			{"l", "Land (merge + test + validate + push)"},
+			{"u", "Refresh worktree state"},
+			{"del", "Delete worktree"},
+			{"h / ?", "This help screen"},
+			{"q", "Quit"},
+		}
+		for _, kv := range helpKeys {
+			b.WriteString("  " + label.Render(kv[0]) + desc.Render(kv[1]) + "\n")
+		}
 	}
 
 	b.WriteString("\n")
 	b.WriteString(heading.Render("  File List") + "\n\n")
 
-	keys = [][2]string{
+	helpKeys = [][2]string{
 		{"→ / enter", "View diff for file"},
-		{"o", "Open file in VS Code"},
+		{"e", "Edit file in VS Code"},
 		{"a", "View all diffs (integrated)"},
 		{"/", "Search/filter files"},
 		{"g", "Git status (uncommitted changes)"},
 		{"x", "Toggle reviewed checkmark"},
 		{"← / esc", "Back to worktree list"},
 	}
-	for _, kv := range keys {
+	for _, kv := range helpKeys {
 		b.WriteString("  " + label.Render(kv[0]) + desc.Render(kv[1]) + "\n")
 	}
 
 	b.WriteString("\n")
 	b.WriteString(heading.Render("  Diff View") + "\n\n")
 
-	keys = [][2]string{
+	helpKeys = [][2]string{
 		{"space / b", "Page down / up"},
 		{"] / [", "Next / prev file"},
 		{"n / p", "Next / prev hunk"},
@@ -74,20 +94,20 @@ func (a App) viewHelp() string {
 		{"x", "Toggle reviewed checkmark"},
 		{"← / esc", "Back"},
 	}
-	for _, kv := range keys {
+	for _, kv := range helpKeys {
 		b.WriteString("  " + label.Render(kv[0]) + desc.Render(kv[1]) + "\n")
 	}
 
 	b.WriteString("\n")
 	b.WriteString(heading.Render("  Git Status") + "\n\n")
 
-	keys = [][2]string{
+	helpKeys = [][2]string{
 		{"→ / enter", "View diff for file"},
 		{"del", "Revert / delete file"},
-		{"o", "Open file in VS Code"},
+		{"e", "Edit file in VS Code"},
 		{"← / esc", "Back to file list"},
 	}
-	for _, kv := range keys {
+	for _, kv := range helpKeys {
 		b.WriteString("  " + label.Render(kv[0]) + desc.Render(kv[1]) + "\n")
 	}
 

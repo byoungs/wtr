@@ -51,6 +51,14 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Sync with any background processes from disk
 		cmd := a.syncTestStatus()
+
+		// Auto-detect mode: no worktrees → direct mode
+		if len(a.worktrees) == 0 {
+			a.mode = "direct"
+			a.screen = screenDirectLanding
+			return a, a.loadBranchInfo()
+		}
+		a.mode = "worktree"
 		return a, cmd
 
 	case tea.KeyMsg:
@@ -94,17 +102,54 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.selectedWorktree--
 			}
 		case key.Matches(msg, keys.Down):
-			if a.selectedWorktree < len(a.worktrees)-1 {
+			maxIdx := len(a.worktrees) - 1
+			if a.mainUncommitted > 0 {
+				maxIdx = len(a.worktrees) // main row is one past the last worktree
+			}
+			if a.selectedWorktree < maxIdx {
 				a.selectedWorktree++
 			}
 		case key.Matches(msg, keys.Refresh):
 			a.flashMsg = "Refreshing..."
 			return a, tea.Batch(a.loadWorktrees(), flashAfter(2*time.Second))
 		case key.Matches(msg, keys.Enter), key.Matches(msg, keys.Right):
+			if a.onMainRow() {
+				a.statusFiles = loadGitStatus(a.repoDir)
+				if len(a.statusFiles) > 0 {
+					a.worktrees = append(a.worktrees, git.Worktree{
+					Path:        a.repoDir,
+					Branch:      "main",
+					CommitHash:  git.CurrentHash(a.repoDir),
+					Uncommitted: a.mainUncommitted,
+				})
+				a.selectedWorktree = len(a.worktrees) - 1
+					a.statusCursor = 0
+					a.confirmRevert = false
+					a.prevScreen = screenWorktreeList
+					a.screen = screenGitStatus
+				}
+				return a, nil
+			}
 			if len(a.worktrees) > 0 {
 				a.screen = screenFileList
 				return a, a.loadDiff()
 			}
+		case key.Matches(msg, keys.GitStatus):
+			a.statusFiles = loadGitStatus(a.repoDir)
+			if len(a.statusFiles) > 0 {
+				a.worktrees = append(a.worktrees, git.Worktree{
+					Path:        a.repoDir,
+					Branch:      "main",
+					CommitHash:  git.CurrentHash(a.repoDir),
+					Uncommitted: a.mainUncommitted,
+				})
+				a.selectedWorktree = len(a.worktrees) - 1
+				a.statusCursor = 0
+				a.confirmRevert = false
+				a.prevScreen = screenWorktreeList
+				a.screen = screenGitStatus
+			}
+			return a, nil
 		case key.Matches(msg, keys.Open):
 			if len(a.worktrees) > 0 {
 				wt := a.worktrees[a.selectedWorktree]
@@ -148,10 +193,15 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				a.landing = true
 				a.landBranch = wt.Branch
-				a.landStep = "(v: view output)"
+				a.landStep = "(o: view output)"
 				logFile := runner.LogPath(a.repoDir, wt.Branch)
+				wtPath := wt.Path
 				return a, func() tea.Msg {
-					_, err := land.Run(a.repoDir, wt.Branch, logFile, func(s land.Step) {})
+					_, err := land.Run(a.repoDir, land.Steps(wt.Branch), logFile, func(s land.Step) {})
+					if err == nil {
+						// Fast-forward worktree branch to match main
+						exec.Command("git", "-C", wtPath, "rebase", "main").Run()
+					}
 					return landDoneMsg{err: err}
 				}
 			}
@@ -204,10 +254,25 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
+// onMainRow returns true if the cursor is on the main branch row.
+func (a App) onMainRow() bool {
+	return a.mainUncommitted > 0 && a.selectedWorktree == len(a.worktrees)
+}
+
+// currentWorktreePath returns the path for the currently selected worktree,
+// or repoDir if on the main row.
+func (a App) currentWorktreePath() string {
+	if a.selectedWorktree >= len(a.worktrees) {
+		return a.repoDir
+	}
+	return a.worktrees[a.selectedWorktree].Path
+}
+
+
 func (a App) loadDiff() tea.Cmd {
 	wt := a.worktrees[a.selectedWorktree]
 	return func() tea.Msg {
-		files, err := git.GetDiff(wt.Path)
+		files, err := git.GetDiff(wt.Path, "main")
 		if err != nil {
 			return errMsg{err}
 		}
@@ -224,7 +289,7 @@ func (a App) viewWorktreeList() string {
 	if a.err != nil {
 		errStyle := lipgloss.NewStyle().Foreground(colorRed).Width(a.width - 4)
 		b.WriteString(errStyle.Render(fmt.Sprintf("  Error: %v", a.err)) + "\n")
-		b.WriteString(styleHelp.Render("  (v: view full output  any key: dismiss)") + "\n\n")
+		b.WriteString(styleHelp.Render("  (o: view full output  any key: dismiss)") + "\n\n")
 	}
 
 	if len(a.worktrees) == 0 {
@@ -248,8 +313,10 @@ func (a App) viewWorktreeList() string {
 		// Branch state
 		var branchState string
 		ahead := fmt.Sprintf(" ↑%d", wt.CommitsAhead)
-		if wt.CommitsAhead == 0 {
+		if wt.CommitsAhead == 0 && wt.CommitsBehind == 0 {
 			branchState = stylePending.Render(" (no commits)")
+		} else if wt.CommitsAhead == 0 && wt.CommitsBehind > 0 {
+			branchState = styleRunning.Render(fmt.Sprintf(" ↓%d", wt.CommitsBehind)) + stylePending.Render(" (ff)")
 		} else if wt.CommitsBehind > 0 {
 			branchState = styleRunning.Render(ahead) + styleRunning.Render(fmt.Sprintf(" ↓%d", wt.CommitsBehind))
 		} else {
@@ -350,18 +417,27 @@ func (a App) viewWorktreeList() string {
 		b.WriteString("\n")
 	}
 
-	// Main branch footer — always visible
-	mainLabel := lipgloss.NewStyle().Bold(true).Foreground(colorBlue)
-	b.WriteString(mainLabel.Render("  main") + "  ")
-	if a.mainUncommitted > 0 {
-		b.WriteString(styleRunning.Render(fmt.Sprintf("△%d uncommitted", a.mainUncommitted)))
-	} else {
-		b.WriteString(stylePass.Render("clean"))
+	// Main branch footer
+	mainCursor := "  "
+	if a.onMainRow() {
+		mainCursor = "→ "
 	}
-	b.WriteString("\n")
+	var mainStatus string
+	if a.mainUncommitted > 0 {
+		mainStatus = styleRunning.Render(fmt.Sprintf(" △%d uncommitted", a.mainUncommitted))
+	} else {
+		mainStatus = stylePass.Render(" clean")
+	}
+	mainLine := fmt.Sprintf("%s%-40s%s", mainCursor, "main", mainStatus)
+	if a.onMainRow() {
+		mainLine = styleSelected.Width(a.width).Render(mainLine)
+	} else {
+		mainLine = styleNormal.Render(mainLine)
+	}
+	b.WriteString(mainLine + "\n")
 
 	padToBottom(&b, a.height, strings.Count(b.String(), "\n"))
-	b.WriteString(styleHelp.Render("  q:quit  h:help  →review  o:open  t:test  v:output  r:rebase  l:land  del:delete  u:refresh"))
+	b.WriteString(styleHelp.Render("  q:quit  h:help  →review  e:edit  t:test  o:output  r:rebase  l:land  del:delete  g:status  u:refresh"))
 
 	return b.String()
 }

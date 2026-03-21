@@ -19,6 +19,7 @@ const (
 	screenHelp
 	screenTestOutput
 	screenGitStatus
+	screenDirectLanding
 )
 
 type App struct {
@@ -68,6 +69,10 @@ type App struct {
 	// File search
 	searching   bool
 	searchQuery string
+
+	// Direct mode
+	mode       string // "worktree" or "direct"
+	branchInfo git.BranchInfo
 }
 
 func NewApp(repoDir string) App {
@@ -149,10 +154,29 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case landStepMsg:
 		a.landStep = msg.step
 		return a, nil
+	case branchInfoMsg:
+		a.branchInfo = msg.info
+		// In direct mode, populate synthetic worktree so shared screens work
+		if a.mode == "direct" {
+			a.worktrees = []git.Worktree{{
+				Path:        a.repoDir,
+				Branch:      msg.info.Name,
+				CommitHash:  msg.info.CommitHash,
+				Uncommitted: msg.info.Uncommitted,
+			}}
+			a.selectedWorktree = 0
+			// Sync test status from disk (restores state after restart)
+			cmd := a.syncTestStatus()
+			return a, cmd
+		}
+		return a, nil
 	case landDoneMsg:
 		a.landing = false
 		if msg.err != nil {
 			a.err = msg.err
+		}
+		if a.mode == "direct" {
+			return a, a.loadBranchInfo()
 		}
 		return a, a.loadWorktrees()
 	case worktreeDeletedMsg:
@@ -214,6 +238,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.updateDiffView(msg)
 	case screenAllDiffs:
 		return a.updateAllDiffs(msg)
+	case screenDirectLanding:
+		return a.updateDirectLanding(msg)
 	}
 	return a, nil
 }
@@ -237,6 +263,8 @@ func (a App) View() string {
 		return a.viewTestOutput()
 	case screenGitStatus:
 		return a.viewGitStatus()
+	case screenDirectLanding:
+		return a.viewDirectLanding()
 	}
 	return ""
 }
@@ -263,6 +291,7 @@ type deleteFailedMsg struct{ output string }
 type flashClearMsg struct{}
 type squashDoneMsg struct{ err error }
 type rebaseDoneMsg struct{ err error }
+type branchInfoMsg struct{ info git.BranchInfo }
 
 func flashAfter(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg {
@@ -285,6 +314,16 @@ func (a App) loadWorktrees() tea.Cmd {
 		}
 		mainDirty := git.UncommittedCount(a.repoDir)
 		return worktreesLoadedMsg{worktrees: wts, mainUncommitted: mainDirty}
+	}
+}
+
+func (a App) loadBranchInfo() tea.Cmd {
+	return func() tea.Msg {
+		info, err := git.GetBranchInfo(a.repoDir)
+		if err != nil {
+			return errMsg{err}
+		}
+		return branchInfoMsg{info}
 	}
 }
 

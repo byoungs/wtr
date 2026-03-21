@@ -36,3 +36,33 @@ func TestSteps(t *testing.T) {
 		t.Errorf("merge args = %v, want [merge --ff-only worktree-test]", steps[0].Args)
 	}
 }
+
+func TestDirectSteps(t *testing.T) {
+	steps := DirectSteps()
+	if len(steps) != 3 {
+		t.Fatalf("expected 3 steps, got %d", len(steps))
+	}
+
+	expected := []struct {
+		name    string
+		command string
+	}{
+		{"test", "make"},
+		{"validate", "make"},
+		{"push", "git"},
+	}
+
+	for i, exp := range expected {
+		if steps[i].Name != exp.name {
+			t.Errorf("step %d name = %q, want %q", i, steps[i].Name, exp.name)
+		}
+		if steps[i].Command != exp.command {
+			t.Errorf("step %d command = %q, want %q", i, steps[i].Command, exp.command)
+		}
+	}
+
+	// Verify push uses "push"
+	if steps[2].Args[0] != "push" {
+		t.Errorf("push args[0] = %q, want %q", steps[2].Args[0], "push")
+	}
+}
