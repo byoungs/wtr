@@ -53,11 +53,10 @@ func Start(repoDir, worktreePath, branch string) error {
 	os.Remove(logFile)
 	os.WriteFile(statusFile, []byte(StatusRunning), 0644)
 
-	// Launch: sh -c 'make validate >> log 2>&1; echo $? > status_tmp; mv status_tmp status'
-	// Using a temp file + mv for atomic status write
+	// Run make validate if the target exists, skip gracefully if not.
 	script := fmt.Sprintf(
-		`make validate >>%q 2>&1; if [ $? -eq 0 ]; then echo passed > %q; else echo failed > %q; fi`,
-		logFile, statusFile, statusFile,
+		`if make -n validate >/dev/null 2>&1; then make validate >>%q 2>&1; if [ $? -eq 0 ]; then echo passed > %q; else echo failed > %q; fi; else echo "No validate target found, skipping." >>%q; echo passed > %q; fi`,
+		logFile, statusFile, statusFile, logFile, statusFile,
 	)
 
 	cmd := exec.Command("sh", "-c", script)

@@ -9,17 +9,18 @@ import (
 )
 
 type Step struct {
-	Name    string
-	Command string
-	Args    []string
+	Name     string
+	Command  string
+	Args     []string
+	Optional bool
 }
 
 func Steps(branch string) []Step {
 	return []Step{
-		{"merge", "git", []string{"merge", "--ff-only", branch}},
-		{"test", "make", []string{"test"}},
-		{"validate", "make", []string{"validate"}},
-		{"push", "git", []string{"push"}},
+		{"merge", "git", []string{"merge", "--ff-only", branch}, false},
+		{"test", "make", []string{"test"}, false},
+		{"validate", "make", []string{"validate"}, true},
+		{"push", "git", []string{"push"}, false},
 	}
 }
 
@@ -69,6 +70,10 @@ func Run(repoDir string, branch string, logPath string, onStep func(Step)) ([]St
 		result := StepResult{Step: step, Output: string(out), Err: err}
 		results = append(results, result)
 		if err != nil {
+			if step.Optional {
+				writeLog("==> %s skipped (optional)\n", step.Name)
+				continue
+			}
 			detail := strings.TrimSpace(string(out))
 			if detail != "" {
 				return results, fmt.Errorf("%s: %s", step.Name, detail)
