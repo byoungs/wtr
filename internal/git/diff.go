@@ -2,7 +2,9 @@ package git
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -146,4 +148,39 @@ func GetDiff(worktreePath string) ([]FileDiff, error) {
 		return nil, fmt.Errorf("git diff: %w", err)
 	}
 	return ParseDiff(string(out))
+}
+
+// GetWorkingDiff returns the working tree diff for a specific file (unstaged changes).
+// For untracked files, returns a synthetic diff showing the full file as added.
+func GetWorkingDiff(worktreePath, filePath string) ([]FileDiff, error) {
+	// Try normal diff first (for tracked modified files)
+	cmd := exec.Command("git", "-C", worktreePath, "diff", "--", filePath)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff: %w", err)
+	}
+	if len(out) > 0 {
+		return ParseDiff(string(out))
+	}
+
+	// No diff output — might be untracked. Show full file as added.
+	content, err := os.ReadFile(filepath.Join(worktreePath, filePath))
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(content), "\n")
+	var diffLines []DiffLine
+	for _, l := range lines {
+		diffLines = append(diffLines, DiffLine{Type: LineAdded, Content: l})
+	}
+	return []FileDiff{{
+		OldName: "/dev/null",
+		NewName: filePath,
+		Hunks: []Hunk{{
+			NewStart: 1,
+			NewLines: len(lines),
+			Header:   fmt.Sprintf("@@ -0,0 +1,%d @@ (new file)", len(lines)),
+			Lines:    diffLines,
+		}},
+	}}, nil
 }

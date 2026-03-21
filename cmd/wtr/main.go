@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/byoungs/wtr/internal/tui"
+	"github.com/byoungs/wtr/internal/wtr"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -19,7 +19,7 @@ func main() {
 		repoDir = os.Args[1]
 	}
 
-	app := tui.NewApp(repoDir)
+	app := wtr.NewApp(repoDir)
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
