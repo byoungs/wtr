@@ -9,13 +9,14 @@ func TestSteps(t *testing.T) {
 	}
 
 	expected := []struct {
-		name    string
-		command string
+		name     string
+		command  string
+		optional bool
 	}{
-		{"merge", "git"},
-		{"test", "make"},
-		{"validate", "make"},
-		{"push", "git"},
+		{"merge", "git", false},
+		{"test", "make", false},
+		{"validate", "make", true},
+		{"push", "git", false},
 	}
 
 	for i, exp := range expected {
@@ -24,6 +25,9 @@ func TestSteps(t *testing.T) {
 		}
 		if steps[i].Command != exp.command {
 			t.Errorf("step %d command = %q, want %q", i, steps[i].Command, exp.command)
+		}
+		if steps[i].Optional != exp.optional {
+			t.Errorf("step %d optional = %v, want %v", i, steps[i].Optional, exp.optional)
 		}
 	}
 
