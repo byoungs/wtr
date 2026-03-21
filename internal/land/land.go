@@ -24,15 +24,25 @@ func Steps(branch string) []Step {
 	}
 }
 
+// DirectSteps returns the steps for pushing the current branch to origin.
+// No merge step — we're already on the branch.
+func DirectSteps() []Step {
+	return []Step{
+		{"test", "make", []string{"test"}, false},
+		{"validate", "make", []string{"validate"}, true},
+		{"push", "git", []string{"push"}, false},
+	}
+}
+
 type StepResult struct {
 	Step   Step
 	Output string
 	Err    error
 }
 
-// Run executes all land steps sequentially from repoDir.
+// Run executes land steps sequentially from repoDir.
 // Output is appended to logPath if provided (empty string to skip).
-func Run(repoDir string, branch string, logPath string, onStep func(Step)) ([]StepResult, error) {
+func Run(repoDir string, steps []Step, logPath string, onStep func(Step)) ([]StepResult, error) {
 	var logFile *os.File
 	if logPath != "" {
 		os.MkdirAll(filepath.Dir(logPath), 0755)
@@ -50,7 +60,7 @@ func Run(repoDir string, branch string, logPath string, onStep func(Step)) ([]St
 	}
 
 	var results []StepResult
-	for _, step := range Steps(branch) {
+	for _, step := range steps {
 		if onStep != nil {
 			onStep(step)
 		}

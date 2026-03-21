@@ -140,15 +140,16 @@ func ParseDiff(raw string) ([]FileDiff, error) {
 	return files, nil
 }
 
-// GetDiff runs `git -C <path> diff main..HEAD` and parses the output.
-func GetDiff(worktreePath string) ([]FileDiff, error) {
-	cmd := exec.Command("git", "-C", worktreePath, "diff", "main..HEAD")
+// GetDiff runs `git -C <path> diff <baseRef>..HEAD` and parses the output.
+func GetDiff(repoPath string, baseRef string) ([]FileDiff, error) {
+	cmd := exec.Command("git", "-C", repoPath, "diff", baseRef+"..HEAD")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git diff: %w", err)
 	}
 	return ParseDiff(string(out))
 }
+
 
 // GetWorkingDiff returns the working tree diff for a specific file (unstaged changes).
 // For untracked files, returns a synthetic diff showing the full file as added.

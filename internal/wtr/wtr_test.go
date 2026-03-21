@@ -129,16 +129,16 @@ func boundKeys(bindings ...key.Binding) map[string]bool {
 
 func TestNavbarMentionsAllHandledKeys_WorktreeList(t *testing.T) {
 	// The worktree list navbar should mention all action keys
-	navbar := "  q:quit  h:help  →review  o:open  t:test  v:output  r:rebase  l:land  del:delete  u:refresh"
+	navbar := "  q:quit  h:help  →review  e:edit  t:test  o:output  r:rebase  l:land  del:delete  u:refresh"
 
 	expected := []struct {
 		label   string
 		display string
 	}{
 		{"review", "→review"},
-		{"open", "o:"},
+		{"edit", "e:"},
 		{"test", "t:"},
-		{"output", "v:"},
+		{"output", "o:"},
 		{"rebase", "r:"},
 		{"land", "l:"},
 		{"delete", "del:"},
@@ -155,9 +155,9 @@ func TestNavbarMentionsAllHandledKeys_WorktreeList(t *testing.T) {
 }
 
 func TestNavbarMentionsAllHandledKeys_FileList(t *testing.T) {
-	navbar := "  q:quit  ←back  →view  o:open  a:all diffs  x:reviewed  g:status"
+	navbar := "  q:quit  ←back  →view  e:edit  a:all diffs  x:reviewed  g:status"
 
-	expected := []string{"q:", "←back", "→view", "o:", "a:", "x:", "g:"}
+	expected := []string{"q:", "←back", "→view", "e:", "a:", "x:", "g:"}
 	for _, e := range expected {
 		if !strings.Contains(navbar, e) {
 			t.Errorf("file list navbar missing %q", e)
@@ -177,9 +177,9 @@ func TestNavbarMentionsAllHandledKeys_DiffView(t *testing.T) {
 }
 
 func TestNavbarMentionsAllHandledKeys_GitStatus(t *testing.T) {
-	navbar := "  q:quit  ←back  →view  del:revert  o:open"
+	navbar := "  q:quit  ←back  →view  del:revert  e:edit"
 
-	expected := []string{"q:", "←back", "→view", "del:", "o:"}
+	expected := []string{"q:", "←back", "→view", "del:", "e:"}
 	for _, e := range expected {
 		if !strings.Contains(navbar, e) {
 			t.Errorf("git status navbar missing %q", e)

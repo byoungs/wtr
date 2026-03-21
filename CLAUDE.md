@@ -25,13 +25,30 @@ Run from any git repo root (on main branch):
 - **Test Output** — live/persisted output from make validate
 - **Help** — keybinding reference (press h or ?)
 
+## Modes
+
+wtr auto-detects which mode to use:
+
+- **Worktree mode** — when git worktrees exist (besides main). Landing screen shows worktree list.
+- **Direct mode** — when only main branch exists (no worktrees). Landing screen shows branch review with unpushed commits, test status, and push action.
+
+### Direct Mode Keys
+- `→`/`enter`: review changed files (diff vs origin)
+- `g`: git status (uncommitted changes)
+- `t`: run make validate (background)
+- `o`: view test/validate output
+- `l`: push to origin (test + validate + push)
+- `u`: refresh
+- `h`/`?`: help
+- `q`: quit
+
 ## Key Bindings
 
 ### Worktree List
 - `→`/`enter`: review files
-- `o`: open worktree in VS Code
+- `e`: edit worktree in VS Code
 - `t`: run make validate (background, survives exit)
-- `v`: view test/validate output
+- `o`: view test/validate output
 - `r`: rebase on main
 - `s`: squash to 1 commit on main
 - `l`: land (ff-only merge + test + validate + push)
@@ -42,7 +59,7 @@ Run from any git repo root (on main branch):
 
 ### File List
 - `→`/`enter`: view diff
-- `o`: open file in VS Code
+- `e`: edit file in VS Code
 - `a`: all diffs (integrated view)
 - `g`: git status (uncommitted changes)
 - `x`: toggle reviewed checkmark
@@ -60,7 +77,7 @@ Run from any git repo root (on main branch):
 ### Git Status
 - `→`/`enter`: view diff
 - `r`: revert/delete file (with confirmation)
-- `o`: open in VS Code
+- `e`: edit in VS Code
 - `←`/`esc`: back
 
 ## Key Binding Rules
@@ -86,12 +103,14 @@ State sources:
 ## Project Structure
 
     cmd/wtr/main.go               Entry point
+    internal/git/branch.go         Branch info (ahead/behind origin)
     internal/git/worktree.go       Worktree discovery + commit counts
     internal/git/diff.go           Diff parsing (committed + working tree)
     internal/wtr/app.go            Root Bubble Tea model, screen routing
     internal/wtr/worktree_list.go  Worktree list screen
     internal/wtr/file_list.go      File list screen
     internal/wtr/diff_view.go      Diff view (side-by-side + unified)
+    internal/wtr/direct_landing.go Direct mode landing screen
     internal/wtr/all_diffs.go      Integrated all-files diff view
     internal/wtr/git_status.go     Uncommitted changes screen
     internal/wtr/test_output.go    Live/persisted test output viewer

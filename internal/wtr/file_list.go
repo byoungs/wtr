@@ -89,6 +89,7 @@ func (a App) updateFileList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 			if len(a.files) > 0 && a.selectedFile < len(a.files) {
+				a.prevScreen = screenFileList
 				a.screen = screenDiffView
 			}
 		case key.Matches(msg, keys.MarkReviewed):
@@ -122,7 +123,11 @@ func (a App) updateFileList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Back):
 			a.searching = false
 			a.searchQuery = ""
-			a.screen = screenWorktreeList
+			if a.mode == "direct" {
+				a.screen = screenDirectLanding
+			} else {
+				a.screen = screenWorktreeList
+			}
 		}
 	}
 	return a, nil
@@ -286,7 +291,7 @@ func (a App) viewFileList() string {
 	if a.searching {
 		b.WriteString(styleHelp.Render(fmt.Sprintf("  search: %s█  (enter: confirm  esc: cancel)", a.searchQuery)))
 	} else {
-		b.WriteString(styleHelp.Render("  q:quit  ←back  →view  o:open  a:all diffs  x:reviewed  /:search  g:status"))
+		b.WriteString(styleHelp.Render("  q:quit  ←back  →view  e:edit  a:all diffs  x:reviewed  /:search  g:status"))
 	}
 
 	return b.String()
