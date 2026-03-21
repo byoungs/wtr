@@ -40,7 +40,39 @@ func (a App) updateFileList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyMsg:
+		// Search mode: capture typed characters
+		if a.searching {
+			switch msg.String() {
+			case "esc":
+				a.searching = false
+				a.searchQuery = ""
+				a.selectedFile = 0
+				fileListScrollY = 0
+			case "enter":
+				a.searching = false
+			case "backspace":
+				if len(a.searchQuery) > 0 {
+					a.searchQuery = a.searchQuery[:len(a.searchQuery)-1]
+					a.selectedFile = 0
+					fileListScrollY = 0
+				}
+			default:
+				if len(msg.String()) == 1 {
+					a.searchQuery += msg.String()
+					a.selectedFile = 0
+					fileListScrollY = 0
+				}
+			}
+			return a, nil
+		}
+
 		switch {
+		case key.Matches(msg, keys.Search):
+			a.searching = true
+			a.searchQuery = ""
+			a.selectedFile = 0
+			fileListScrollY = 0
+			return a, nil
 		case key.Matches(msg, keys.Up):
 			if a.selectedFile > 0 {
 				a.selectedFile--
@@ -88,6 +120,8 @@ func (a App) updateFileList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 		case key.Matches(msg, keys.Back):
+			a.searching = false
+			a.searchQuery = ""
 			a.screen = screenWorktreeList
 		}
 	}
@@ -108,7 +142,11 @@ func (a App) viewFileList() string {
 	var b strings.Builder
 
 	wt := a.worktrees[a.selectedWorktree]
-	title := styleTitle.Width(a.width).Render(fmt.Sprintf("Files — %s", wt.Branch))
+	titleText := fmt.Sprintf("Files — %s", wt.Branch)
+	if a.searchQuery != "" {
+		titleText += fmt.Sprintf("  [search: %s]", a.searchQuery)
+	}
+	title := styleTitle.Width(a.width).Render(titleText)
 	b.WriteString(title + "\n")
 
 	if len(a.files) == 0 && len(a.statusFiles) == 0 {
@@ -119,16 +157,51 @@ func (a App) viewFileList() string {
 		return b.String()
 	}
 
+	// Filter files by search query
+	visibleFiles := a.files
+	var visibleIndices []int
+	if a.searchQuery != "" {
+		var names []string
+		for _, f := range a.files {
+			name := f.NewName
+			if name == "" || name == "/dev/null" {
+				name = f.OldName
+			}
+			names = append(names, name)
+		}
+		filtered := filterFiles(names, a.searchQuery)
+		filteredSet := make(map[string]bool, len(filtered))
+		for _, n := range filtered {
+			filteredSet[n] = true
+		}
+		visibleFiles = nil
+		for i, f := range a.files {
+			name := f.NewName
+			if name == "" || name == "/dev/null" {
+				name = f.OldName
+			}
+			if filteredSet[name] {
+				visibleFiles = append(visibleFiles, f)
+				visibleIndices = append(visibleIndices, i)
+			}
+		}
+	} else {
+		for i := range a.files {
+			visibleIndices = append(visibleIndices, i)
+		}
+	}
+
 	// Build all lines
 	var lines []string
-	for i, f := range a.files {
+	for vi, f := range visibleFiles {
+		origIdx := visibleIndices[vi]
 		cursor := "  "
-		if i == a.selectedFile {
+		if vi == a.selectedFile {
 			cursor = "→ "
 		}
 
 		check := "○"
-		if a.reviewed[a.reviewKey(i)] {
+		if a.reviewed[a.reviewKey(origIdx)] {
 			check = styleReviewed.Render("✓")
 		}
 
@@ -210,7 +283,11 @@ func (a App) viewFileList() string {
 	}
 
 	padToBottom(&b, a.height, strings.Count(b.String(), "\n"))
-	b.WriteString(styleHelp.Render("  q:quit  ←back  →view  o:open  a:all diffs  x:reviewed  g:status"))
+	if a.searching {
+		b.WriteString(styleHelp.Render(fmt.Sprintf("  search: %s█  (enter: confirm  esc: cancel)", a.searchQuery)))
+	} else {
+		b.WriteString(styleHelp.Render("  q:quit  ←back  →view  o:open  a:all diffs  x:reviewed  /:search  g:status"))
+	}
 
 	return b.String()
 }

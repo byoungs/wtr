@@ -64,6 +64,10 @@ type App struct {
 
 	// Main branch info
 	mainUncommitted int
+
+	// File search
+	searching   bool
+	searchQuery string
 }
 
 func NewApp(repoDir string) App {
@@ -180,8 +184,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.err != nil {
 			a.err = nil
 		}
-		// q always quits — except during force-delete typing
-		if msg.String() == "q" && a.deleteState != 2 {
+		// q always quits — except during force-delete typing or search
+		if msg.String() == "q" && a.deleteState != 2 && !a.searching {
 			return a, tea.Quit
 		}
 		if a.screen == screenHelp {
@@ -194,7 +198,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.screen == screenGitStatus {
 			return a.updateGitStatus(msg)
 		}
-		if msg.String() == "h" || msg.String() == "?" {
+		if !a.searching && (msg.String() == "h" || msg.String() == "?") {
 			a.prevScreen = a.screen
 			a.screen = screenHelp
 			return a, nil
