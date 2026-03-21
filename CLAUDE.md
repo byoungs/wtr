@@ -15,42 +15,89 @@ Run from any git repo root (on main branch):
     wtr             # Review worktrees in current repo
     wtr /path/to   # Review worktrees in another repo
 
+## Screens
+
+- **Worktree List** — shows all worktrees with commit/test/dirty status
+- **File List** — committed file diffs for a worktree (vs main)
+- **Diff View** — unified or side-by-side diff for a single file
+- **All Diffs** — integrated unified view of all files
+- **Git Status** — uncommitted/untracked files with revert capability
+- **Test Output** — live/persisted output from make validate
+- **Help** — keybinding reference (press h or ?)
+
 ## Key Bindings
 
 ### Worktree List
-- `j/k` or arrows: navigate
-- `enter`: review files
-- `t`: run tests in background
-- `l`: land (ff-only merge + make test + make validate + git push)
-- `d`: delete worktree (press twice to confirm, esc to cancel)
+- `→`/`enter`: review files
+- `o`: open worktree in VS Code
+- `t`: run make validate (background, survives exit)
+- `v`: view test/validate output
+- `r`: rebase on main
+- `s`: squash to 1 commit on main
+- `l`: land (ff-only merge + test + validate + push)
+- `d`: delete worktree (gentle, then type "force" if needed)
+- `u`: refresh worktree state
+- `h`/`?`: help
 - `q`: quit
 
 ### File List
-- `j/k` or arrows: navigate
-- `enter`: view diff
-- `space`: toggle reviewed checkmark
-- `esc`: back to worktree list
+- `→`/`enter`: view diff
+- `o`: open file in VS Code
+- `a`: all diffs (integrated view)
+- `g`: git status (uncommitted changes)
+- `x`: toggle reviewed checkmark
+- `←`/`esc`: back
 
 ### Diff View
-- `j/k` or arrows: scroll
-- `f/b`: next/prev file
+- `j/k`/arrows: scroll line by line
+- `space`/`b`: page down/up
+- `]`/`[`: next/prev file
+- `n`/`p`: next/prev hunk
 - `v`: toggle side-by-side / unified
-- `space`: toggle reviewed checkmark
-- `esc`: back to file list
+- `x`: toggle reviewed (auto-marks when scrolled to bottom)
+- `←`/`esc`: back
+
+### Git Status
+- `→`/`enter`: view diff
+- `r`: revert/delete file (with confirmation)
+- `o`: open in VS Code
+- `←`/`esc`: back
+
+## Key Binding Rules
+
+When adding or changing a keybinding:
+1. Update `internal/wtr/keys.go` (struct + var)
+2. Update the handler in the relevant screen file
+3. Update the help bar (`styleHelp.Render(...)`) in that screen's view function
+4. Update `internal/wtr/help.go` help screen
+5. Update this CLAUDE.md
 
 ## Tech Stack
 
-Go + Bubble Tea (charmbracelet/bubbletea). No database. State is git worktrees.
+Go + Bubble Tea (charmbracelet/bubbletea). No database.
+
+State sources:
+- Git worktrees (live from git CLI)
+- `.git/wtr-state.json` — persisted test status + tested commit hashes
+- `.git/wtr/<branch>.log` — test/validate output (survives restart)
+- `.git/wtr/<branch>.status` — running/passed/failed
+- `.git/wtr/<branch>.pid` — background process PID
 
 ## Project Structure
 
-    cmd/wtr/main.go           Entry point
-    internal/git/worktree.go  Worktree discovery
-    internal/git/diff.go      Diff parsing
-    internal/tui/app.go       Root Bubble Tea model
-    internal/tui/worktree_list.go  Worktree list screen
-    internal/tui/file_list.go      File list screen
-    internal/tui/diff_view.go      Diff view (side-by-side + unified)
-    internal/tui/styles.go         Lip Gloss styles
-    internal/tui/keys.go           Key bindings
-    internal/land/land.go          Land workflow
+    cmd/wtr/main.go               Entry point
+    internal/git/worktree.go       Worktree discovery + commit counts
+    internal/git/diff.go           Diff parsing (committed + working tree)
+    internal/wtr/app.go            Root Bubble Tea model, screen routing
+    internal/wtr/worktree_list.go  Worktree list screen
+    internal/wtr/file_list.go      File list screen
+    internal/wtr/diff_view.go      Diff view (side-by-side + unified)
+    internal/wtr/all_diffs.go      Integrated all-files diff view
+    internal/wtr/git_status.go     Uncommitted changes screen
+    internal/wtr/test_output.go    Live/persisted test output viewer
+    internal/wtr/help.go           Help screen
+    internal/wtr/styles.go         Lip Gloss styles
+    internal/wtr/keys.go           Key bindings (single source of truth)
+    internal/land/land.go          Land workflow (merge + test + validate + push)
+    internal/runner/runner.go      Background process management
+    internal/state/state.go        Persistent state (JSON)
