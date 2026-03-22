@@ -366,9 +366,14 @@ func (a App) viewWorktreeList() string {
 			dirtyIcon = styleRunning.Render(fmt.Sprintf(" △%d", wt.Uncommitted))
 		}
 
+		// Gray out branches with no unique work (behind-only or no commits at all)
+		ffOnly := wt.CommitsAhead == 0
+
 		line := fmt.Sprintf("%s%-40s %s%s%s%s", cursor, wt.Branch, stats, branchState, testIcon, dirtyIcon)
 		if i == a.selectedWorktree {
 			line = styleSelected.Width(a.width).Render(line)
+		} else if ffOnly {
+			line = stylePending.Render(line)
 		} else {
 			line = styleNormal.Render(line)
 		}

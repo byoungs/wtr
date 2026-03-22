@@ -10,7 +10,7 @@ test:
 	go test ./...
 
 install: build
-	cp $(BUILD_DIR)/$(BINARY) ~/go/bin/$(BINARY)
+	ln -sf $(CURDIR)/$(BUILD_DIR)/$(BINARY) ~/go/bin/$(BINARY)
 
 clean:
 	rm -rf $(BUILD_DIR)
