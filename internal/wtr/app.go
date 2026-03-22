@@ -229,6 +229,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, tea.Batch(a.loadWorktrees(), flashAfter(3*time.Second))
 	case tea.KeyMsg:
+		if msg.Type == tea.KeyCtrlC {
+			return a, tea.Quit
+		}
 		if a.err != nil {
 			a.err = nil
 		}
