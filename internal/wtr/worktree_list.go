@@ -78,6 +78,24 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 
 	case tea.KeyMsg:
+		// Delete confirmation mode
+		if a.deleteState == 1 {
+			if msg.String() == "y" {
+				wt := a.worktrees[a.selectedWorktree]
+				a.deleteState = 3 // deleting
+				return a, func() tea.Msg {
+					runner.Clean(a.repoDir, wt.Branch)
+					out, err := exec.Command("git", "-C", a.repoDir, "worktree", "remove", wt.Path).CombinedOutput()
+					if err != nil {
+						return deleteFailedMsg{output: strings.TrimSpace(string(out))}
+					}
+					exec.Command("git", "-C", a.repoDir, "branch", "-D", wt.Branch).Run()
+					return worktreeDeletedMsg{}
+				}
+			}
+			a.deleteState = 0
+			return a, nil
+		}
 		// Force delete typing mode
 		if a.deleteState == 2 {
 			if key.Matches(msg, keys.Back) {
@@ -247,17 +265,7 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, keys.Delete):
 			if len(a.worktrees) > 0 && a.deleteState == 0 {
-				wt := a.worktrees[a.selectedWorktree]
-				a.deleteState = 1
-				return a, func() tea.Msg {
-					runner.Clean(a.repoDir, wt.Branch)
-					out, err := exec.Command("git", "-C", a.repoDir, "worktree", "remove", wt.Path).CombinedOutput()
-					if err != nil {
-						return deleteFailedMsg{output: strings.TrimSpace(string(out))}
-					}
-					exec.Command("git", "-C", a.repoDir, "branch", "-D", wt.Branch).Run()
-					return worktreeDeletedMsg{}
-				}
+				a.deleteState = 1 // show confirmation prompt
 			}
 		case key.Matches(msg, keys.Back):
 			if a.deleteState > 0 {
@@ -431,6 +439,12 @@ func (a App) viewWorktreeList() string {
 	}
 
 	if a.deleteState == 1 && len(a.worktrees) > 0 {
+		wt := a.worktrees[a.selectedWorktree]
+		b.WriteString(styleFail.Render(fmt.Sprintf("  Delete %s? ", wt.Branch)) +
+			styleHelp.Render("y: confirm  any other key: cancel") + "\n")
+		b.WriteString("\n")
+	}
+	if a.deleteState == 3 && len(a.worktrees) > 0 {
 		b.WriteString(styleRunning.Render("  Deleting...") + "\n")
 		b.WriteString("\n")
 	}
