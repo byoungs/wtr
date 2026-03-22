@@ -11,6 +11,7 @@ import (
 type CommitInfo struct {
 	Hash    string // short hash
 	Subject string // first line of commit message
+	Body    string // remaining lines of commit message (may be empty)
 }
 
 // BranchInfo holds the current branch's relationship to its upstream.
@@ -109,19 +110,24 @@ func enrichBranchDiffStats(repoDir string, rangeSpec string, info *BranchInfo) {
 
 // listCommits returns commits from a git log range (e.g. "origin/main..HEAD" or "HEAD").
 func listCommits(repoDir string, rangeSpec string) []CommitInfo {
-	out, err := exec.Command("git", "-C", repoDir, "log", "--oneline", rangeSpec).Output()
+	// Use record separator (\x1e) between commits, null (\x00) between fields
+	out, err := exec.Command("git", "-C", repoDir, "log", "--format=%h%x00%s%x00%b%x1e", rangeSpec).Output()
 	if err != nil {
 		return nil
 	}
 	var commits []CommitInfo
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line == "" {
+	for _, record := range strings.Split(strings.TrimSpace(string(out)), "\x1e") {
+		record = strings.TrimSpace(record)
+		if record == "" {
 			continue
 		}
-		parts := strings.SplitN(line, " ", 2)
-		c := CommitInfo{Hash: parts[0]}
-		if len(parts) > 1 {
-			c.Subject = parts[1]
+		fields := strings.SplitN(record, "\x00", 3)
+		if len(fields) < 2 {
+			continue
+		}
+		c := CommitInfo{Hash: fields[0], Subject: fields[1]}
+		if len(fields) > 2 {
+			c.Body = strings.TrimSpace(fields[2])
 		}
 		commits = append(commits, c)
 	}

@@ -227,7 +227,7 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				a.landing = true
 				a.landBranch = wt.Branch
-				a.landStep = "(o: view output)"
+				a.landStep = "(o:output)"
 				logFile := runner.LogPath(a.repoDir, wt.Branch)
 				wtPath := wt.Path
 				return a, func() tea.Msg {
@@ -313,7 +313,7 @@ func (a App) viewWorktreeList() string {
 	if a.err != nil {
 		errStyle := lipgloss.NewStyle().Foreground(colorRed).Width(a.width - 4)
 		b.WriteString(errStyle.Render(fmt.Sprintf("  Error: %v", a.err)) + "\n")
-		b.WriteString(styleHelp.Render("  (o: view full output  any key: dismiss)") + "\n\n")
+		b.WriteString(styleHelp.Render("  (o:output  any key: dismiss)") + "\n\n")
 	}
 
 	if len(a.worktrees) == 0 {
@@ -334,15 +334,22 @@ func (a App) viewWorktreeList() string {
 		stats := fmt.Sprintf("%d files  +%d -%d",
 			wt.FilesChanged, wt.Insertions, wt.Deletions)
 
+		// Gray out branches with no unique work (behind-only or no commits at all)
+		ffOnly := wt.CommitsAhead == 0
+
 		// Branch state
 		var branchState string
 		ahead := fmt.Sprintf(" ↑%d", wt.CommitsAhead)
 		if wt.CommitsAhead == 0 && wt.CommitsBehind == 0 {
 			branchState = stylePending.Render(" (no commits)")
 		} else if wt.CommitsAhead == 0 && wt.CommitsBehind > 0 {
-			branchState = styleRunning.Render(fmt.Sprintf(" ↓%d", wt.CommitsBehind)) + stylePending.Render(" (ff)")
+			branchState = stylePending.Render(fmt.Sprintf(" ↓%d", wt.CommitsBehind)) + stylePending.Render(" (ff)")
 		} else if wt.CommitsBehind > 0 {
-			branchState = styleRunning.Render(ahead) + styleRunning.Render(fmt.Sprintf(" ↓%d", wt.CommitsBehind))
+			if ffOnly {
+				branchState = stylePending.Render(ahead) + stylePending.Render(fmt.Sprintf(" ↓%d", wt.CommitsBehind))
+			} else {
+				branchState = styleRunning.Render(ahead) + styleRunning.Render(fmt.Sprintf(" ↓%d", wt.CommitsBehind))
+			}
 		} else {
 			branchState = stylePass.Render(ahead)
 		}
@@ -351,11 +358,23 @@ func (a App) viewWorktreeList() string {
 		var testIcon string
 		switch a.testStatus[wt.Branch] {
 		case 1:
-			testIcon = styleRunning.Render(" ⟳")
+			if ffOnly {
+				testIcon = stylePending.Render(" ⟳")
+			} else {
+				testIcon = styleRunning.Render(" ⟳")
+			}
 		case 2:
-			testIcon = stylePass.Render(" ✓")
+			if ffOnly {
+				testIcon = stylePending.Render(" ✓")
+			} else {
+				testIcon = stylePass.Render(" ✓")
+			}
 		case 3:
-			testIcon = styleFail.Render(" ✗")
+			if ffOnly {
+				testIcon = stylePending.Render(" ✗")
+			} else {
+				testIcon = styleFail.Render(" ✗")
+			}
 		default:
 			testIcon = ""
 		}
@@ -363,11 +382,12 @@ func (a App) viewWorktreeList() string {
 		// Uncommitted changes indicator
 		var dirtyIcon string
 		if wt.Uncommitted > 0 {
-			dirtyIcon = styleRunning.Render(fmt.Sprintf(" △%d", wt.Uncommitted))
+			if ffOnly {
+				dirtyIcon = stylePending.Render(fmt.Sprintf(" △%d", wt.Uncommitted))
+			} else {
+				dirtyIcon = styleRunning.Render(fmt.Sprintf(" △%d", wt.Uncommitted))
+			}
 		}
-
-		// Gray out branches with no unique work (behind-only or no commits at all)
-		ffOnly := wt.CommitsAhead == 0
 
 		line := fmt.Sprintf("%s%-40s %s%s%s%s", cursor, wt.Branch, stats, branchState, testIcon, dirtyIcon)
 		if i == a.selectedWorktree {
@@ -418,18 +438,26 @@ func (a App) viewWorktreeList() string {
 	for _, line := range lines[wtListScrollY:end] {
 		b.WriteString(line + "\n")
 	}
+	b.WriteString("\n")
 
-	// Commit preview for selected worktree
-	if a.selectedWorktree < len(a.worktrees) {
-		wt := a.worktrees[a.selectedWorktree]
-		if len(wt.Commits) > 0 {
-			b.WriteString("\n")
-			hashStyle := lipgloss.NewStyle().Foreground(colorSubtle)
-			for _, c := range wt.Commits {
-				b.WriteString("    " + hashStyle.Render(c.Hash) + "  " + c.Subject + "\n")
-			}
-		}
+	// Main branch line — placed above commit preview so commits can fill remaining space
+	mainCursor := "  "
+	if a.onMainRow() {
+		mainCursor = "→ "
 	}
+	var mainStatus string
+	if a.mainUncommitted > 0 {
+		mainStatus = styleRunning.Render(fmt.Sprintf(" △%d uncommitted", a.mainUncommitted))
+	} else {
+		mainStatus = stylePass.Render(" clean")
+	}
+	mainLine := fmt.Sprintf("%s%-40s%s", mainCursor, "main", mainStatus)
+	if a.onMainRow() {
+		mainLine = styleSelected.Width(a.width).Render(mainLine)
+	} else {
+		mainLine = styleNormal.Render(mainLine)
+	}
+	b.WriteString(mainLine + "\n")
 
 	b.WriteString("\n")
 
@@ -464,24 +492,37 @@ func (a App) viewWorktreeList() string {
 		b.WriteString("\n")
 	}
 
-	// Main branch footer
-	mainCursor := "  "
-	if a.onMainRow() {
-		mainCursor = "→ "
+	// Commit preview for selected worktree — fills remaining space
+	if a.selectedWorktree < len(a.worktrees) {
+		wt := a.worktrees[a.selectedWorktree]
+		if len(wt.Commits) > 0 {
+			linesUsed := strings.Count(b.String(), "\n")
+			// Reserve 1 for help bar
+			remaining := a.height - linesUsed - 1
+			if remaining > 0 {
+				hashStyle := lipgloss.NewStyle().Foreground(colorSubtle)
+				msgStyle := lipgloss.NewStyle().Foreground(colorSubtle)
+				linesWritten := 0
+				for _, c := range wt.Commits {
+					if linesWritten >= remaining {
+						break
+					}
+					b.WriteString("    " + hashStyle.Render(c.Hash) + "  " + msgStyle.Render(c.Subject) + "\n")
+					linesWritten++
+					// Show body lines if there's room
+					if c.Body != "" {
+						for _, bodyLine := range strings.Split(c.Body, "\n") {
+							if linesWritten >= remaining {
+								break
+							}
+							b.WriteString("             " + msgStyle.Render(bodyLine) + "\n")
+							linesWritten++
+						}
+					}
+				}
+			}
+		}
 	}
-	var mainStatus string
-	if a.mainUncommitted > 0 {
-		mainStatus = styleRunning.Render(fmt.Sprintf(" △%d uncommitted", a.mainUncommitted))
-	} else {
-		mainStatus = stylePass.Render(" clean")
-	}
-	mainLine := fmt.Sprintf("%s%-40s%s", mainCursor, "main", mainStatus)
-	if a.onMainRow() {
-		mainLine = styleSelected.Width(a.width).Render(mainLine)
-	} else {
-		mainLine = styleNormal.Render(mainLine)
-	}
-	b.WriteString(mainLine + "\n")
 
 	padToBottom(&b, a.height, strings.Count(b.String(), "\n"))
 	b.WriteString(styleHelp.Render("  q:quit  h:help  →review  e:edit  t:test  o:output  r:rebase  l:land  del:delete  g:status  u:refresh"))
