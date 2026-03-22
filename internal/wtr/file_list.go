@@ -96,6 +96,10 @@ func (a App) updateFileList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(a.files) > 0 && a.selectedFile < len(a.files) {
 				k := a.reviewKey(a.selectedFile)
 				a.reviewed[k] = !a.reviewed[k]
+				if a.reviewed[k] && a.selectedWorktree < len(a.worktrees) {
+					wt := a.worktrees[a.selectedWorktree]
+					a.reviewedAt[wt.Branch] = wt.CommitHash
+				}
 				a.saveState()
 			}
 		case key.Matches(msg, keys.Open):

@@ -32,20 +32,36 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case worktreesLoadedMsg:
 		a.worktrees = msg.worktrees
 		a.mainUncommitted = msg.mainUncommitted
-		// Invalidate test status and reviews if code changed since last check
+		// Invalidate test status if code changed since last test
 		for _, wt := range a.worktrees {
 			if testedHash, ok := a.testedAt[wt.Branch]; ok {
 				if wt.CommitHash != testedHash {
 					delete(a.testStatus, wt.Branch)
 					delete(a.testedAt, wt.Branch)
 					runner.Clean(a.repoDir, wt.Branch)
-					// Clear reviews for this branch
-					prefix := wt.Branch + ":"
-					for k := range a.reviewed {
-						if strings.HasPrefix(k, prefix) {
-							delete(a.reviewed, k)
+				}
+			}
+		}
+		// Invalidate reviews only for files that actually changed since last review
+		for _, wt := range a.worktrees {
+			if reviewedHash, ok := a.reviewedAt[wt.Branch]; ok {
+				if wt.CommitHash != reviewedHash {
+					changedFiles := git.ChangedFilesBetween(wt.Path, reviewedHash, wt.CommitHash)
+					if len(changedFiles) == 0 {
+						// Can't determine diff (e.g. hash no longer exists) — clear all
+						prefix := wt.Branch + ":"
+						for k := range a.reviewed {
+							if strings.HasPrefix(k, prefix) {
+								delete(a.reviewed, k)
+							}
+						}
+					} else {
+						for _, f := range changedFiles {
+							delete(a.reviewed, wt.Branch+":"+f)
 						}
 					}
+					// Update to current hash so next refresh compares from here
+					a.reviewedAt[wt.Branch] = wt.CommitHash
 				}
 			}
 		}
@@ -388,6 +404,18 @@ func (a App) viewWorktreeList() string {
 	}
 	for _, line := range lines[wtListScrollY:end] {
 		b.WriteString(line + "\n")
+	}
+
+	// Commit preview for selected worktree
+	if a.selectedWorktree < len(a.worktrees) {
+		wt := a.worktrees[a.selectedWorktree]
+		if len(wt.Commits) > 0 {
+			b.WriteString("\n")
+			hashStyle := lipgloss.NewStyle().Foreground(colorSubtle)
+			for _, c := range wt.Commits {
+				b.WriteString("    " + hashStyle.Render(c.Hash) + "  " + c.Subject + "\n")
+			}
+		}
 	}
 
 	b.WriteString("\n")
