@@ -48,7 +48,7 @@ func (a App) updateDirectLanding(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.branchInfo.AheadOrigin > 0 && !a.landing {
 				a.landing = true
 				a.landBranch = a.branchInfo.Name
-				a.landStep = "(o: view output)"
+				a.landStep = "(o:output)"
 				logFile := runner.LogPath(a.repoDir, a.branchInfo.Name)
 				return a, func() tea.Msg {
 					_, err := land.Run(a.repoDir, land.DirectSteps(), logFile, func(s land.Step) {})
@@ -90,13 +90,13 @@ func (a App) loadDirectDiff() tea.Cmd {
 func (a App) viewDirectLanding() string {
 	var b strings.Builder
 
-	title := styleTitle.Width(a.width).Render("Review")
+	title := styleTitle.Width(a.width).Render("Development on main")
 	b.WriteString(title + "\n\n")
 
 	if a.err != nil {
 		errStyle := lipgloss.NewStyle().Foreground(colorRed).Width(a.width - 4)
 		b.WriteString(errStyle.Render(fmt.Sprintf("  Error: %v", a.err)) + "\n")
-		b.WriteString(styleHelp.Render("  (o: view full output  any key: dismiss)") + "\n\n")
+		b.WriteString(styleHelp.Render("  (o:output  any key: dismiss)") + "\n\n")
 	}
 
 	// Branch summary line — matches worktree list style:
@@ -140,14 +140,7 @@ func (a App) viewDirectLanding() string {
 	line := fmt.Sprintf("  %-40s %s%s%s%s", info.Name, stats, branchState, testIcon, dirtyIcon)
 	b.WriteString(styleSelected.Width(a.width).Render(line) + "\n")
 
-	// Unpushed commits
-	if len(info.Commits) > 0 {
-		b.WriteString("\n")
-		hashStyle := lipgloss.NewStyle().Foreground(colorSubtle)
-		for _, c := range info.Commits {
-			b.WriteString("    " + hashStyle.Render(c.Hash) + "  " + c.Subject + "\n")
-		}
-	} else if info.HasUpstream && info.AheadOrigin == 0 {
+	if info.HasUpstream && info.AheadOrigin == 0 && len(info.Commits) == 0 {
 		b.WriteString("\n")
 		b.WriteString("  " + stylePass.Render("Nothing to push.") + "\n")
 	}
@@ -163,6 +156,33 @@ func (a App) viewDirectLanding() string {
 	if a.flashMsg != "" {
 		b.WriteString(styleRunning.Render("  "+a.flashMsg) + "\n")
 		b.WriteString("\n")
+	}
+
+	// Unpushed commits — fills remaining space
+	if len(info.Commits) > 0 {
+		linesUsed := strings.Count(b.String(), "\n")
+		remaining := a.height - linesUsed - 1 // reserve 1 for help bar
+		if remaining > 0 {
+			hashStyle := lipgloss.NewStyle().Foreground(colorSubtle)
+			msgStyle := lipgloss.NewStyle().Foreground(colorSubtle)
+			linesWritten := 0
+			for _, c := range info.Commits {
+				if linesWritten >= remaining {
+					break
+				}
+				b.WriteString("    " + hashStyle.Render(c.Hash) + "  " + msgStyle.Render(c.Subject) + "\n")
+				linesWritten++
+				if c.Body != "" {
+					for _, bodyLine := range strings.Split(c.Body, "\n") {
+						if linesWritten >= remaining {
+							break
+						}
+						b.WriteString("             " + msgStyle.Render(bodyLine) + "\n")
+						linesWritten++
+					}
+				}
+			}
+		}
 	}
 
 	padToBottom(&b, a.height, strings.Count(b.String(), "\n"))
