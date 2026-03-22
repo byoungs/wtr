@@ -10,15 +10,16 @@ import (
 
 // Worktree represents a git worktree with diff stats relative to main.
 type Worktree struct {
-	Path           string // Absolute path to worktree directory
-	Branch         string // Branch name (e.g. "worktree-auth-fix")
-	CommitHash     string // HEAD commit short hash
-	FilesChanged   int    // Number of files changed vs main
-	Insertions     int    // Lines added
-	Deletions      int    // Lines deleted
-	CommitsAhead   int    // Commits ahead of main
-	CommitsBehind  int    // Commits behind main
-	Uncommitted    int    // Number of uncommitted changes (git status)
+	Path           string       // Absolute path to worktree directory
+	Branch         string       // Branch name (e.g. "worktree-auth-fix")
+	CommitHash     string       // HEAD commit short hash
+	FilesChanged   int          // Number of files changed vs main
+	Insertions     int          // Lines added
+	Deletions      int          // Lines deleted
+	CommitsAhead   int          // Commits ahead of main
+	CommitsBehind  int          // Commits behind main
+	Uncommitted    int          // Number of uncommitted changes (git status)
+	Commits        []CommitInfo // Commits ahead of main (newest first)
 }
 
 // CurrentHash returns the full HEAD hash for a worktree path.
@@ -49,6 +50,7 @@ func ListWorktrees(repoDir string) ([]Worktree, error) {
 		enrichDiffStats(repoDir, &worktrees[i])
 		enrichCommitCounts(&worktrees[i])
 		enrichUncommitted(&worktrees[i])
+		worktrees[i].Commits = listCommits(worktrees[i].Path, "main..HEAD")
 	}
 
 	return worktrees, nil
@@ -224,4 +226,18 @@ func parseSummaryLine(line string, wt *Worktree) {
 			wt.Deletions = n
 		}
 	}
+}
+
+// ChangedFilesBetween returns the list of files that changed between two commits.
+// Returns nil if the diff can't be computed (e.g. old hash was garbage collected).
+func ChangedFilesBetween(repoPath, oldHash, newHash string) []string {
+	out, err := exec.Command("git", "-C", repoPath, "diff", "--name-only", oldHash, newHash).Output()
+	if err != nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" {
+		return nil
+	}
+	return strings.Split(trimmed, "\n")
 }

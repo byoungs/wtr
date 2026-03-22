@@ -93,6 +93,10 @@ func (a App) updateDiffView(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.MarkReviewed):
 			k := a.reviewKey(a.selectedFile)
 			a.reviewed[k] = !a.reviewed[k]
+			if a.reviewed[k] && a.selectedWorktree < len(a.worktrees) {
+				wt := a.worktrees[a.selectedWorktree]
+				a.reviewedAt[wt.Branch] = wt.CommitHash
+			}
 			a.saveState()
 		case key.Matches(msg, keys.Toggle):
 			a.sideBySide = !a.sideBySide
@@ -128,6 +132,11 @@ func (a *App) markCurrentReviewed() {
 	k := a.reviewKey(a.selectedFile)
 	if !a.reviewed[k] {
 		a.reviewed[k] = true
+		// Track which commit this review was for
+		if a.selectedWorktree < len(a.worktrees) {
+			wt := a.worktrees[a.selectedWorktree]
+			a.reviewedAt[wt.Branch] = wt.CommitHash
+		}
 		a.saveState()
 	}
 }

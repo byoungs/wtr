@@ -33,7 +33,8 @@ type App struct {
 	selectedWorktree int
 	files            []git.FileDiff
 	selectedFile     int
-	reviewed         map[string]bool // key: "branch:filename"
+	reviewed         map[string]bool   // key: "branch:filename"
+	reviewedAt       map[string]string // branch -> commit hash when reviews were done
 	sideBySide       bool
 	err              error
 
@@ -81,17 +82,30 @@ func NewApp(repoDir string) App {
 	if reviewed == nil {
 		reviewed = make(map[string]bool)
 	}
+	reviewedAt := s.ReviewedAt
+	if reviewedAt == nil {
+		reviewedAt = make(map[string]string)
+	}
 	return App{
 		repoDir:    repoDir,
 		reviewed:   reviewed,
+		reviewedAt: reviewedAt,
 		sideBySide: false,
 		testStatus: s.TestStatus,
 		testedAt:   s.TestedAt,
 	}
 }
 
+type autoRefreshMsg struct{}
+
+func tickAutoRefresh() tea.Cmd {
+	return tea.Tick(30*time.Second, func(time.Time) tea.Msg {
+		return autoRefreshMsg{}
+	})
+}
+
 func (a App) Init() tea.Cmd {
-	return a.loadWorktrees()
+	return tea.Batch(a.loadWorktrees(), tickAutoRefresh())
 }
 
 func (a App) saveState() {
@@ -99,6 +113,7 @@ func (a App) saveState() {
 		TestStatus: a.testStatus,
 		TestedAt:   a.testedAt,
 		Reviewed:   a.reviewed,
+		ReviewedAt: a.reviewedAt,
 	})
 }
 
@@ -111,6 +126,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		a.err = msg.err
 		return a, nil
+	case autoRefreshMsg:
+		// Only refresh on landing screens, always re-schedule
+		if a.screen == screenWorktreeList {
+			return a, tea.Batch(a.loadWorktrees(), tickAutoRefresh())
+		}
+		if a.screen == screenDirectLanding {
+			return a, tea.Batch(a.loadBranchInfo(), tickAutoRefresh())
+		}
+		return a, tickAutoRefresh()
 	case outputTickMsg:
 		if a.screen == screenTestOutput {
 			return a.updateTestOutput(msg)
