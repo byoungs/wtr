@@ -1,6 +1,9 @@
 package wtr
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/byoungs/wtr/internal/git"
@@ -159,6 +162,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					// Finished — read result
 					diskStatus := runner.ReadStatus(a.repoDir, branch)
+					debugLog(a.repoDir, "[tick] branch=%s finished, disk_status=%q resolved=%d", branch, diskStatus, runner.StatusToInt(diskStatus))
 					a.testStatus[branch] = runner.StatusToInt(diskStatus)
 					// Find the commit hash for this branch
 					for _, wt := range a.worktrees {
@@ -367,16 +371,39 @@ func (a *App) syncTestStatus() tea.Cmd {
 			if runner.IsRunning(a.repoDir, wt.Branch) {
 				a.testStatus[wt.Branch] = 1
 				anyRunning = true
+				debugLog(a.repoDir, "[sync] branch=%s still running", wt.Branch)
 			} else {
-				// Process died without writing status — mark failed
-				a.testStatus[wt.Branch] = 3
+				// Process is gone — re-read status in case it finished between our two reads
+				finalStatus := runner.ReadStatus(a.repoDir, wt.Branch)
+				if finalStatus != runner.StatusRunning && finalStatus != "" {
+					a.testStatus[wt.Branch] = runner.StatusToInt(finalStatus)
+					debugLog(a.repoDir, "[sync] branch=%s finished (race resolved), status=%q", wt.Branch, finalStatus)
+				} else {
+					// Process truly died without writing status
+					a.testStatus[wt.Branch] = 3
+					debugLog(a.repoDir, "[sync] branch=%s status=running but process dead, marking failed", wt.Branch)
+				}
 			}
 		} else {
 			a.testStatus[wt.Branch] = runner.StatusToInt(diskStatus)
+			debugLog(a.repoDir, "[sync] branch=%s disk_status=%q", wt.Branch, diskStatus)
 		}
 	}
 	if anyRunning {
 		return tickTestStatus()
 	}
 	return nil
+}
+
+// debugLog appends a timestamped line to .git/wtr/debug.log.
+func debugLog(repoDir, format string, args ...any) {
+	dir := filepath.Join(repoDir, ".git", "wtr")
+	os.MkdirAll(dir, 0755)
+	f, err := os.OpenFile(filepath.Join(dir, "debug.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(f, "%s %s\n", time.Now().Format("15:04:05.000"), msg)
 }

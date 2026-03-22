@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const wtrDir = ".git/wtr"
@@ -67,11 +68,15 @@ func Start(repoDir, worktreePath, branch string) error {
 	os.WriteFile(logFile, []byte{}, 0644)
 
 	if err := cmd.Start(); err != nil {
+		debugLog(repoDir, "[start] branch=%s err=%v", branch, err)
 		return fmt.Errorf("starting validate: %w", err)
 	}
 
+	pid := cmd.Process.Pid
+	debugLog(repoDir, "[start] branch=%s pid=%d dir=%s", branch, pid, worktreePath)
+
 	// Write PID so we can check if still running
-	os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
+	os.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644)
 
 	// Release the process — it's fully detached
 	cmd.Process.Release()
@@ -101,24 +106,30 @@ func ReadStatus(repoDir, branch string) string {
 func IsRunning(repoDir, branch string) bool {
 	status := ReadStatus(repoDir, branch)
 	if status != StatusRunning {
+		debugLog(repoDir, "[isrunning] branch=%s status=%q (not running)", branch, status)
 		return false
 	}
 	// Double-check the PID is alive
 	data, err := os.ReadFile(pidPath(repoDir, branch))
 	if err != nil {
+		debugLog(repoDir, "[isrunning] branch=%s no pid file: %v", branch, err)
 		return false
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
 	if err != nil {
+		debugLog(repoDir, "[isrunning] branch=%s bad pid: %v", branch, err)
 		return false
 	}
 	proc, err := os.FindProcess(pid)
 	if err != nil {
+		debugLog(repoDir, "[isrunning] branch=%s FindProcess(%d): %v", branch, pid, err)
 		return false
 	}
 	// Signal 0 checks if process exists
 	err = proc.Signal(syscall.Signal(0))
-	return err == nil
+	alive := err == nil
+	debugLog(repoDir, "[isrunning] branch=%s pid=%d alive=%v signal_err=%v", branch, pid, alive, err)
+	return alive
 }
 
 // StatusToInt converts file status to the int used by the app.
@@ -140,4 +151,17 @@ func Clean(repoDir, branch string) {
 	os.Remove(logPath(repoDir, branch))
 	os.Remove(statusPath(repoDir, branch))
 	os.Remove(pidPath(repoDir, branch))
+}
+
+// debugLog appends a timestamped line to .git/wtr/debug.log.
+func debugLog(repoDir, format string, args ...any) {
+	dir := filepath.Join(repoDir, wtrDir)
+	os.MkdirAll(dir, 0755)
+	f, err := os.OpenFile(filepath.Join(dir, "debug.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(f, "%s %s\n", time.Now().Format("15:04:05.000"), msg)
 }
