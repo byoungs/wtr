@@ -48,12 +48,12 @@ func (a App) updateDirectLanding(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.branchInfo.AheadOrigin > 0 && !a.landing {
 				a.landing = true
 				a.landBranch = a.branchInfo.Name
-				a.landStep = "(o:output)"
+				a.landStep = ""
 				logFile := runner.LogPath(a.repoDir, a.branchInfo.Name)
-				return a, func() tea.Msg {
+				return a, tea.Batch(func() tea.Msg {
 					_, err := land.Run(a.repoDir, land.DirectSteps(), logFile, func(s land.Step) {})
 					return landDoneMsg{err: err}
-				}
+				}, tickLandStatus())
 			}
 		case key.Matches(msg, keys.GitStatus):
 			a.statusFiles = loadGitStatus(a.repoDir)
@@ -149,7 +149,12 @@ func (a App) viewDirectLanding() string {
 
 	// Landing status
 	if a.landing {
-		b.WriteString(styleRunning.Render(fmt.Sprintf("  Pushing %s... %s\n", a.landBranch, a.landStep)))
+		stepInfo := ""
+		if a.landStep != "" {
+			stepInfo = " " + a.landStep
+		}
+		b.WriteString(styleRunning.Render(fmt.Sprintf("  Pushing %s...%s", a.landBranch, stepInfo)) +
+			" " + styleHelp.Render("(o:output)") + "\n")
 		b.WriteString("\n")
 	}
 

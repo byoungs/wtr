@@ -139,6 +139,7 @@ func (a App) updateGitStatus(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, keys.Back):
 			if a.prevScreen == screenWorktreeList {
+				a.removeTempMain()
 				a.screen = screenWorktreeList
 			} else if a.mode == "direct" && a.prevScreen == screenDirectLanding {
 				a.screen = screenDirectLanding
