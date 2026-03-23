@@ -150,12 +150,7 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.onMainRow() {
 				a.statusFiles = loadGitStatus(a.repoDir)
 				if len(a.statusFiles) > 0 {
-					a.worktrees = append(a.worktrees, git.Worktree{
-					Path:        a.repoDir,
-					Branch:      "main",
-					CommitHash:  git.CurrentHash(a.repoDir),
-					Uncommitted: a.mainUncommitted,
-				})
+					a.addTempMain()
 				a.selectedWorktree = len(a.worktrees) - 1
 					a.statusCursor = 0
 					a.confirmRevert = false
@@ -171,12 +166,7 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.GitStatus):
 			a.statusFiles = loadGitStatus(a.repoDir)
 			if len(a.statusFiles) > 0 {
-				a.worktrees = append(a.worktrees, git.Worktree{
-					Path:        a.repoDir,
-					Branch:      "main",
-					CommitHash:  git.CurrentHash(a.repoDir),
-					Uncommitted: a.mainUncommitted,
-				})
+				a.addTempMain()
 				a.selectedWorktree = len(a.worktrees) - 1
 				a.statusCursor = 0
 				a.confirmRevert = false
@@ -227,17 +217,17 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				a.landing = true
 				a.landBranch = wt.Branch
-				a.landStep = "(o:output)"
+				a.landStep = ""
 				logFile := runner.LogPath(a.repoDir, wt.Branch)
 				wtPath := wt.Path
-				return a, func() tea.Msg {
+				return a, tea.Batch(func() tea.Msg {
 					_, err := land.Run(a.repoDir, land.Steps(wt.Branch), logFile, func(s land.Step) {})
 					if err == nil {
 						// Fast-forward worktree branch to match main
 						exec.Command("git", "-C", wtPath, "rebase", "main").Run()
 					}
 					return landDoneMsg{err: err}
-				}
+				}, tickLandStatus())
 			}
 		case key.Matches(msg, keys.Squash):
 			if len(a.worktrees) > 0 {
@@ -335,7 +325,7 @@ func (a App) viewWorktreeList() string {
 			wt.FilesChanged, wt.Insertions, wt.Deletions)
 
 		// Gray out branches with no unique work (behind-only or no commits at all)
-		ffOnly := wt.CommitsAhead == 0
+		ffOnly := wt.CommitsAhead == 0 && wt.Uncommitted == 0
 
 		// Branch state
 		var branchState string
@@ -343,7 +333,11 @@ func (a App) viewWorktreeList() string {
 		if wt.CommitsAhead == 0 && wt.CommitsBehind == 0 {
 			branchState = stylePending.Render(" (no commits)")
 		} else if wt.CommitsAhead == 0 && wt.CommitsBehind > 0 {
-			branchState = stylePending.Render(fmt.Sprintf(" ↓%d", wt.CommitsBehind)) + stylePending.Render(" (ff)")
+			if ffOnly {
+				branchState = stylePending.Render(fmt.Sprintf(" ↓%d", wt.CommitsBehind)) + stylePending.Render(" (ff)")
+			} else {
+				branchState = styleRunning.Render(fmt.Sprintf(" ↓%d", wt.CommitsBehind)) + styleRunning.Render(" (ff)")
+			}
 		} else if wt.CommitsBehind > 0 {
 			if ffOnly {
 				branchState = stylePending.Render(ahead) + stylePending.Render(fmt.Sprintf(" ↓%d", wt.CommitsBehind))
@@ -462,7 +456,12 @@ func (a App) viewWorktreeList() string {
 	b.WriteString("\n")
 
 	if a.landing {
-		b.WriteString(styleRunning.Render(fmt.Sprintf("  Landing %s... %s\n", a.landBranch, a.landStep)))
+		stepInfo := ""
+		if a.landStep != "" {
+			stepInfo = " " + a.landStep
+		}
+		b.WriteString(styleRunning.Render(fmt.Sprintf("  Landing %s...%s", a.landBranch, stepInfo)) +
+			" " + styleHelp.Render("(o:output)") + "\n")
 		b.WriteString("\n")
 	}
 

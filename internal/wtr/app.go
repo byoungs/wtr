@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/byoungs/wtr/internal/git"
@@ -11,6 +12,24 @@ import (
 	"github.com/byoungs/wtr/internal/state"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// lastLogStep extracts the most recent step name from a land log.
+// Log lines look like: "==> merge: git [merge --ff-only branch]"
+func lastLogStep(logContent string) string {
+	step := ""
+	for _, line := range strings.Split(logContent, "\n") {
+		if strings.HasPrefix(line, "==> ") {
+			// Extract step name (e.g. "merge" from "==> merge: git ...")
+			rest := strings.TrimPrefix(line, "==> ")
+			if idx := strings.Index(rest, ":"); idx > 0 {
+				step = rest[:idx]
+			} else if idx := strings.Index(rest, " "); idx > 0 {
+				step = rest[:idx]
+			}
+		}
+	}
+	return step
+}
 
 type screen int
 
@@ -77,6 +96,36 @@ type App struct {
 	// Direct mode
 	mode       string // "worktree" or "direct"
 	branchInfo git.BranchInfo
+}
+
+// addTempMain appends a temporary "main" worktree entry for git status viewing,
+// but only if one isn't already present.
+func (a *App) addTempMain() {
+	for _, wt := range a.worktrees {
+		if wt.Branch == "main" {
+			return
+		}
+	}
+	a.worktrees = append(a.worktrees, git.Worktree{
+		Path:        a.repoDir,
+		Branch:      "main",
+		CommitHash:  git.CurrentHash(a.repoDir),
+		Uncommitted: a.mainUncommitted,
+	})
+}
+
+// removeTempMain removes the temporary "main" entry from worktrees.
+func (a *App) removeTempMain() {
+	filtered := a.worktrees[:0]
+	for _, wt := range a.worktrees {
+		if wt.Branch != "main" {
+			filtered = append(filtered, wt)
+		}
+	}
+	a.worktrees = filtered
+	if a.selectedWorktree >= len(a.worktrees) && len(a.worktrees) > 0 {
+		a.selectedWorktree = len(a.worktrees) - 1
+	}
 }
 
 func NewApp(repoDir string) App {
@@ -182,6 +231,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case landStepMsg:
 		a.landStep = msg.step
 		return a, nil
+	case landTickMsg:
+		if !a.landing {
+			return a, nil
+		}
+		// Read current step from log file
+		logContent := runner.ReadLog(a.repoDir, a.landBranch)
+		if logContent != "" {
+			a.landStep = lastLogStep(logContent)
+		}
+		return a, tickLandStatus()
 	case branchInfoMsg:
 		a.branchInfo = msg.info
 		// In direct mode, populate synthetic worktree so shared screens work
@@ -315,6 +374,7 @@ type testDoneMsg struct {
 type testTickMsg struct{}
 
 type landStepMsg struct{ step string }
+type landTickMsg struct{}
 type landDoneMsg struct{ err error }
 
 type worktreeDeletedMsg struct{}
@@ -334,6 +394,13 @@ func flashAfter(d time.Duration) tea.Cmd {
 func tickTestStatus() tea.Cmd {
 	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
 		return testTickMsg{}
+	})
+}
+
+// tickLandStatus schedules a check on the landing log after 1 second.
+func tickLandStatus() tea.Cmd {
+	return tea.Tick(1*time.Second, func(time.Time) tea.Msg {
+		return landTickMsg{}
 	})
 }
 
