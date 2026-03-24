@@ -401,6 +401,9 @@ func (a App) viewWorktreeList() string {
 	if a.landing {
 		overhead += 2
 	}
+	if a.confirmQuit {
+		overhead += 2
+	}
 	if a.flashMsg != "" {
 		overhead += 2
 	}
@@ -462,6 +465,12 @@ func (a App) viewWorktreeList() string {
 		}
 		b.WriteString(styleRunning.Render(fmt.Sprintf("  Landing %s...%s", a.landBranch, stepInfo)) +
 			" " + styleHelp.Render("(o:output)") + "\n")
+		b.WriteString("\n")
+	}
+
+	if a.confirmQuit {
+		b.WriteString(styleFail.Render("  Landing in progress — quit anyway? ") +
+			styleHelp.Render("y: quit  any other key: cancel") + "\n")
 		b.WriteString("\n")
 	}
 

@@ -85,6 +85,7 @@ type App struct {
 	statusFiles    []statusEntry
 	statusCursor   int
 	confirmRevert  bool
+	confirmQuit    bool
 
 	// Main branch info
 	mainUncommitted int
@@ -292,7 +293,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, tea.Batch(a.loadWorktrees(), flashAfter(3*time.Second))
 	case tea.KeyMsg:
+		// Handle quit confirmation prompt
+		if a.confirmQuit {
+			if msg.String() == "y" || msg.String() == "Y" {
+				return a, tea.Quit
+			}
+			a.confirmQuit = false
+			return a, nil
+		}
 		if msg.Type == tea.KeyCtrlC {
+			if a.landing {
+				a.confirmQuit = true
+				return a, nil
+			}
 			return a, tea.Quit
 		}
 		if a.err != nil {
@@ -300,6 +313,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// q always quits — except during force-delete typing or search
 		if msg.String() == "q" && a.deleteState != 2 && !a.searching {
+			if a.landing {
+				a.confirmQuit = true
+				return a, nil
+			}
 			return a, tea.Quit
 		}
 		if a.screen == screenHelp {
