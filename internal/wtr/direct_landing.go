@@ -158,6 +158,12 @@ func (a App) viewDirectLanding() string {
 		b.WriteString("\n")
 	}
 
+	if a.confirmQuit {
+		b.WriteString(styleFail.Render("  Push in progress — quit anyway? ") +
+			styleHelp.Render("y: quit  any other key: cancel") + "\n")
+		b.WriteString("\n")
+	}
+
 	if a.flashMsg != "" {
 		b.WriteString(styleRunning.Render("  "+a.flashMsg) + "\n")
 		b.WriteString("\n")
