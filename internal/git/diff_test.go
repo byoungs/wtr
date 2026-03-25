@@ -1,6 +1,7 @@
 package git
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -77,5 +78,45 @@ func TestParseDiff(t *testing.T) {
 	}
 	if f1.NewName != "internal/auth/token.go" {
 		t.Errorf("second file NewName: expected %q, got %q", "internal/auth/token.go", f1.NewName)
+	}
+}
+
+func TestParseDiffCRLF(t *testing.T) {
+	// Simulate git diff output for a file with CRLF line endings
+	raw := "diff --git a/email.txt b/email.txt\r\n" +
+		"new file mode 100644\r\n" +
+		"--- /dev/null\r\n" +
+		"+++ b/email.txt\r\n" +
+		"@@ -0,0 +1,3 @@\r\n" +
+		"+From: alice@example.com\r\n" +
+		"+Subject: Hello\r\n" +
+		"+Body text here\r\n"
+
+	files, err := ParseDiff(raw)
+	if err != nil {
+		t.Fatalf("ParseDiff returned error: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+	f := files[0]
+	if len(f.Hunks) != 1 {
+		t.Fatalf("expected 1 hunk, got %d", len(f.Hunks))
+	}
+	hunk := f.Hunks[0]
+	if len(hunk.Lines) != 3 {
+		t.Fatalf("expected 3 lines, got %d", len(hunk.Lines))
+	}
+	// Verify no \r in parsed content
+	for i, line := range hunk.Lines {
+		if line.Type != LineAdded {
+			t.Errorf("line %d: expected LineAdded, got %d", i, line.Type)
+		}
+		if strings.Contains(line.Content, "\r") {
+			t.Errorf("line %d: content contains \\r: %q", i, line.Content)
+		}
+	}
+	if hunk.Lines[0].Content != "From: alice@example.com" {
+		t.Errorf("line 0: expected %q, got %q", "From: alice@example.com", hunk.Lines[0].Content)
 	}
 }

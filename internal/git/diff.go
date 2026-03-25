@@ -43,6 +43,8 @@ func ParseDiff(raw string) ([]FileDiff, error) {
 	var currentFile *FileDiff
 	var currentHunk *Hunk
 
+	// Strip carriage returns from CRLF files to avoid terminal rendering issues
+	raw = strings.ReplaceAll(raw, "\r", "")
 	lines := strings.Split(raw, "\n")
 	for _, line := range lines {
 		switch {
@@ -169,7 +171,8 @@ func GetWorkingDiff(worktreePath, filePath string) ([]FileDiff, error) {
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(string(content), "\n")
+	// Strip carriage returns from CRLF files
+	lines := strings.Split(strings.ReplaceAll(string(content), "\r", ""), "\n")
 	var diffLines []DiffLine
 	for _, l := range lines {
 		diffLines = append(diffLines, DiffLine{Type: LineAdded, Content: l})
