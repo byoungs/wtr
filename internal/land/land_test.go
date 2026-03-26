@@ -1,6 +1,11 @@
 package land
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestSteps(t *testing.T) {
 	steps := Steps("worktree-test")
@@ -64,5 +69,56 @@ func TestDirectSteps(t *testing.T) {
 	// Verify push uses "push"
 	if steps[2].Args[0] != "push" {
 		t.Errorf("push args[0] = %q, want %q", steps[2].Args[0], "push")
+	}
+}
+
+func TestRun_StreamsOutputToLogFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "test.log")
+
+	// Use echo which writes to stdout — should appear in log file in real-time
+	steps := []Step{
+		{"echo-step", "echo", []string{"hello from streaming"}, false},
+	}
+
+	results, err := Run(tmpDir, steps, logPath, nil)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	// Log file should contain the step header and the echoed output
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("reading log: %v", err)
+	}
+	log := string(data)
+	if !strings.Contains(log, "==> echo-step") {
+		t.Error("log missing step header")
+	}
+	if !strings.Contains(log, "hello from streaming") {
+		t.Error("log missing streamed output")
+	}
+	if !strings.Contains(log, "echo-step OK") {
+		t.Error("log missing OK marker")
+	}
+}
+
+func TestRun_WithoutLogFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	steps := []Step{
+		{"echo-step", "echo", []string{"no log"}, false},
+	}
+
+	results, err := Run(tmpDir, steps, "", nil)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	// Without a log file, output should be captured in StepResult
+	if !strings.Contains(results[0].Output, "no log") {
+		t.Errorf("expected output in result, got %q", results[0].Output)
 	}
 }

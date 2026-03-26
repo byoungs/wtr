@@ -3,6 +3,7 @@ package wtr
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/byoungs/wtr/internal/git"
 	"github.com/charmbracelet/bubbles/key"
@@ -408,6 +409,71 @@ func TestRightArrowNextFileWhenContentFitsOnScreen(t *testing.T) {
 	k := a.worktrees[a.selectedWorktree].Branch + ":small.go"
 	if !a.reviewed[k] {
 		t.Error("right arrow on short file should mark as reviewed")
+	}
+}
+
+// --- fmtElapsed tests ---
+
+func TestFmtElapsed(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{0, "0s"},
+		{5 * time.Second, "5s"},
+		{59 * time.Second, "59s"},
+		{60 * time.Second, "1m 0s"},
+		{90 * time.Second, "1m 30s"},
+		{5*time.Minute + 12*time.Second, "5m 12s"},
+	}
+	for _, tt := range tests {
+		got := fmtElapsed(tt.d)
+		if got != tt.want {
+			t.Errorf("fmtElapsed(%v) = %q, want %q", tt.d, got, tt.want)
+		}
+	}
+}
+
+// --- Landing elapsed time display tests ---
+
+func TestWorktreeListView_ShowsLandingElapsed(t *testing.T) {
+	a := NewApp("/tmp/fake")
+	a.screen = screenWorktreeList
+	a.width = 80
+	a.height = 24
+	a.worktrees = []git.Worktree{{Branch: "feat", Path: "/tmp/feat", CommitHash: "abc"}}
+	a.landing = true
+	a.landBranch = "feat"
+	a.landStep = "test"
+	a.landStarted = time.Now().Add(-35 * time.Second)
+
+	view := a.viewWorktreeList()
+	if !strings.Contains(view, "35s") {
+		t.Error("worktree list landing should show elapsed time")
+	}
+	if !strings.Contains(view, "test") {
+		t.Error("worktree list landing should show current step")
+	}
+}
+
+func TestDirectLandingView_ShowsLandingElapsed(t *testing.T) {
+	a := NewApp("/tmp/fake")
+	a.mode = "direct"
+	a.screen = screenDirectLanding
+	a.width = 80
+	a.height = 24
+	a.branchInfo = git.BranchInfo{Name: "main", HasUpstream: true, AheadOrigin: 1}
+	a.landing = true
+	a.landBranch = "main"
+	a.landStep = "validate"
+	a.landStarted = time.Now().Add(-90 * time.Second)
+
+	view := a.viewDirectLanding()
+	if !strings.Contains(view, "1m 30s") {
+		t.Error("direct landing should show elapsed time")
+	}
+	if !strings.Contains(view, "validate") {
+		t.Error("direct landing should show current step")
 	}
 }
 
