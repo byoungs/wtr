@@ -49,6 +49,7 @@ func (a App) updateDirectLanding(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.landing = true
 				a.landBranch = a.branchInfo.Name
 				a.landStep = ""
+				a.landStarted = time.Now()
 				logFile := runner.LogPath(a.repoDir, a.branchInfo.Name)
 				return a, tea.Batch(func() tea.Msg {
 					_, err := land.Run(a.repoDir, land.DirectSteps(), logFile, func(s land.Step) {})
@@ -153,7 +154,8 @@ func (a App) viewDirectLanding() string {
 		if a.landStep != "" {
 			stepInfo = " " + a.landStep
 		}
-		b.WriteString(styleRunning.Render(fmt.Sprintf("  Pushing %s...%s", a.landBranch, stepInfo)) +
+		elapsed := fmtElapsed(time.Since(a.landStarted))
+		b.WriteString(styleRunning.Render(fmt.Sprintf("  Pushing %s...%s (%s)", a.landBranch, stepInfo, elapsed)) +
 			" " + styleHelp.Render("(o:output)") + "\n")
 		b.WriteString("\n")
 	}

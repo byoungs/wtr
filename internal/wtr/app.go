@@ -69,6 +69,7 @@ type App struct {
 	landBranch  string
 	landStep    string
 	landResults []string
+	landStarted time.Time
 
 	// Delete: 0=idle, 1=trying, 2=force prompt (typing "force")
 	deleteState int
@@ -405,6 +406,17 @@ func flashAfter(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg {
 		return flashClearMsg{}
 	})
+}
+
+// fmtElapsed formats a duration as "Xs" or "Xm Ys".
+func fmtElapsed(d time.Duration) string {
+	d = d.Truncate(time.Second)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	m := int(d.Minutes())
+	s := int(d.Seconds()) % 60
+	return fmt.Sprintf("%dm %ds", m, s)
 }
 
 // tickTestStatus schedules a check on running tests after 2 seconds.
