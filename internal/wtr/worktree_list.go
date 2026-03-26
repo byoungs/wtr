@@ -218,6 +218,7 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.landing = true
 				a.landBranch = wt.Branch
 				a.landStep = ""
+				a.landStarted = time.Now()
 				logFile := runner.LogPath(a.repoDir, wt.Branch)
 				wtPath := wt.Path
 				return a, tea.Batch(func() tea.Msg {
@@ -463,7 +464,8 @@ func (a App) viewWorktreeList() string {
 		if a.landStep != "" {
 			stepInfo = " " + a.landStep
 		}
-		b.WriteString(styleRunning.Render(fmt.Sprintf("  Landing %s...%s", a.landBranch, stepInfo)) +
+		elapsed := fmtElapsed(time.Since(a.landStarted))
+		b.WriteString(styleRunning.Render(fmt.Sprintf("  Landing %s...%s (%s)", a.landBranch, stepInfo, elapsed)) +
 			" " + styleHelp.Render("(o:output)") + "\n")
 		b.WriteString("\n")
 	}

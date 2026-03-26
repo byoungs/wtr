@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
 type Step struct {
@@ -68,9 +67,18 @@ func Run(repoDir string, steps []Step, logPath string, onStep func(Step)) ([]Ste
 
 		cmd := exec.Command(step.Command, step.Args...)
 		cmd.Dir = repoDir
-		out, err := cmd.CombinedOutput()
 
-		writeLog("%s", string(out))
+		// Stream output to log file in real-time (not buffered)
+		var out []byte
+		var err error
+		if logFile != nil {
+			cmd.Stdout = logFile
+			cmd.Stderr = logFile
+			err = cmd.Run()
+		} else {
+			out, err = cmd.CombinedOutput()
+		}
+
 		if err != nil {
 			writeLog("==> %s FAILED: %v\n", step.Name, err)
 		} else {
@@ -84,10 +92,7 @@ func Run(repoDir string, steps []Step, logPath string, onStep func(Step)) ([]Ste
 				writeLog("==> %s skipped (optional)\n", step.Name)
 				continue
 			}
-			detail := strings.TrimSpace(string(out))
-			if detail != "" {
-				return results, fmt.Errorf("%s: %s", step.Name, detail)
-			}
+			// When streaming to log, output is in the file, not in out
 			return results, fmt.Errorf("%s failed: %w", step.Name, err)
 		}
 	}
