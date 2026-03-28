@@ -54,7 +54,7 @@ func TestListWorktrees(t *testing.T) {
 	mustRun(t, wtDir, "commit", "-m", "add feature file")
 
 	// Exercise the function under test.
-	worktrees, err := ListWorktrees(repoDir)
+	worktrees, err := ListWorktrees(repoDir, "main")
 	if err != nil {
 		t.Fatalf("ListWorktrees: %v", err)
 	}

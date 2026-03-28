@@ -88,7 +88,8 @@ type App struct {
 	confirmRevert  bool
 	confirmQuit    bool
 
-	// Main branch info
+	// Main/master branch info
+	baseBranch      string // "main" or "master"
 	mainUncommitted int
 
 	// File search
@@ -100,27 +101,27 @@ type App struct {
 	branchInfo git.BranchInfo
 }
 
-// addTempMain appends a temporary "main" worktree entry for git status viewing,
+// addTempMain appends a temporary base branch worktree entry for git status viewing,
 // but only if one isn't already present.
 func (a *App) addTempMain() {
 	for _, wt := range a.worktrees {
-		if wt.Branch == "main" {
+		if wt.Branch == a.baseBranch {
 			return
 		}
 	}
 	a.worktrees = append(a.worktrees, git.Worktree{
 		Path:        a.repoDir,
-		Branch:      "main",
+		Branch:      a.baseBranch,
 		CommitHash:  git.CurrentHash(a.repoDir),
 		Uncommitted: a.mainUncommitted,
 	})
 }
 
-// removeTempMain removes the temporary "main" entry from worktrees.
+// removeTempMain removes the temporary base branch entry from worktrees.
 func (a *App) removeTempMain() {
 	filtered := a.worktrees[:0]
 	for _, wt := range a.worktrees {
-		if wt.Branch != "main" {
+		if wt.Branch != a.baseBranch {
 			filtered = append(filtered, wt)
 		}
 	}
@@ -142,6 +143,7 @@ func NewApp(repoDir string) App {
 	}
 	return App{
 		repoDir:    repoDir,
+		baseBranch: git.DefaultBranch(repoDir),
 		reviewed:   reviewed,
 		reviewedAt: reviewedAt,
 		sideBySide: false,
@@ -283,14 +285,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			a.err = msg.err
 		} else {
-			a.flashMsg = "Squashed to 1 commit on main"
+			a.flashMsg = "Squashed to 1 commit on " + a.baseBranch
 		}
 		return a, tea.Batch(a.loadWorktrees(), flashAfter(3*time.Second))
 	case rebaseDoneMsg:
 		if msg.err != nil {
 			a.err = msg.err
 		} else {
-			a.flashMsg = "Rebased on main"
+			a.flashMsg = "Rebased on " + a.baseBranch
 		}
 		return a, tea.Batch(a.loadWorktrees(), flashAfter(3*time.Second))
 	case tea.KeyMsg:
@@ -435,7 +437,7 @@ func tickLandStatus() tea.Cmd {
 
 func (a App) loadWorktrees() tea.Cmd {
 	return func() tea.Msg {
-		wts, err := git.ListWorktrees(a.repoDir)
+		wts, err := git.ListWorktrees(a.repoDir, a.baseBranch)
 		if err != nil {
 			return errMsg{err}
 		}

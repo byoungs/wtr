@@ -91,7 +91,7 @@ func (a App) loadDirectDiff() tea.Cmd {
 func (a App) viewDirectLanding() string {
 	var b strings.Builder
 
-	title := styleTitle.Width(a.width).Render("Development on main")
+	title := styleTitle.Width(a.width).Render("Development on " + a.baseBranch)
 	b.WriteString(title + "\n\n")
 
 	if a.err != nil {

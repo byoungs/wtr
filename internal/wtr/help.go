@@ -19,9 +19,9 @@ func (a App) viewHelp() string {
 	// Status indicators
 	b.WriteString(heading.Render("  Status Indicators") + "\n\n")
 
-	b.WriteString("  " + stylePass.Render("↑N") + " " + desc.Render("N commits ahead of main (green = up to date)") + "\n")
-	b.WriteString("  " + styleRunning.Render("↓N") + " " + desc.Render("Behind main by N commits — press r to rebase") + "\n")
-	b.WriteString("  " + stylePending.Render("(no commits)") + " " + desc.Render("Branch exists but no changes vs main") + "\n")
+	b.WriteString("  " + stylePass.Render("↑N") + " " + desc.Render("N commits ahead of "+a.baseBranch+" (green = up to date)") + "\n")
+	b.WriteString("  " + styleRunning.Render("↓N") + " " + desc.Render("Behind "+a.baseBranch+" by N commits — press r to rebase") + "\n")
+	b.WriteString("  " + stylePending.Render("(no commits)") + " " + desc.Render("Branch exists but no changes vs "+a.baseBranch) + "\n")
 	b.WriteString("  " + stylePass.Render("✓") + "  " + desc.Render("Tests/validation passed") + "\n")
 	b.WriteString("  " + styleFail.Render("✗") + "  " + desc.Render("Tests/validation failed") + "\n")
 	b.WriteString("  " + styleRunning.Render("⟳") + "  " + desc.Render("Tests/validation running") + "\n")
@@ -54,8 +54,8 @@ func (a App) viewHelp() string {
 			{"e", "Edit worktree in VS Code"},
 			{"t", "Run make test e2e (background)"},
 			{"o", "View test/validate output"},
-			{"r", "Rebase on main"},
-			{"s", "Squash to 1 commit on main"},
+			{"r", "Rebase on " + a.baseBranch},
+			{"s", "Squash to 1 commit on " + a.baseBranch},
 			{"l", "Land (merge + test + validate + push)"},
 			{"u", "Refresh worktree state"},
 			{"del", "Delete worktree"},

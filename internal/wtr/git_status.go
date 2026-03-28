@@ -159,7 +159,7 @@ func (a App) viewGitStatus() string {
 	if a.selectedWorktree < len(a.worktrees) {
 		branchName = a.worktrees[a.selectedWorktree].Branch
 	} else {
-		branchName = "main"
+		branchName = a.baseBranch
 	}
 	title := styleTitle.Width(a.width).Render(fmt.Sprintf("Git Status — %s", branchName))
 	b.WriteString(title + "\n")

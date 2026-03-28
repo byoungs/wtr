@@ -225,7 +225,7 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					_, err := land.Run(a.repoDir, land.Steps(wt.Branch), logFile, func(s land.Step) {})
 					if err == nil {
 						// Fast-forward worktree branch to match main
-						exec.Command("git", "-C", wtPath, "rebase", "main").Run()
+						exec.Command("git", "-C", wtPath, "rebase", a.baseBranch).Run()
 					}
 					return landDoneMsg{err: err}
 				}, tickLandStatus())
@@ -236,9 +236,9 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !a.checkFresh(wt) {
 					return a, flashAfter(3 * time.Second)
 				}
-				a.flashMsg = fmt.Sprintf("Squashing %s onto main...", wt.Branch)
+				a.flashMsg = fmt.Sprintf("Squashing %s onto %s...", wt.Branch, a.baseBranch)
 				return a, func() tea.Msg {
-					_, err := git.SquashOntoMain(wt.Path)
+					_, err := git.SquashOntoBase(wt.Path, a.baseBranch)
 					return squashDoneMsg{err: err}
 				}
 			}
@@ -248,9 +248,9 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !a.checkFresh(wt) {
 					return a, flashAfter(3 * time.Second)
 				}
-				a.flashMsg = fmt.Sprintf("Rebasing %s on main...", wt.Branch)
+				a.flashMsg = fmt.Sprintf("Rebasing %s on %s...", wt.Branch, a.baseBranch)
 				return a, func() tea.Msg {
-					_, err := git.RebaseOnMain(wt.Path)
+					_, err := git.RebaseOnBase(wt.Path, a.baseBranch)
 					return rebaseDoneMsg{err: err}
 				}
 			}
@@ -287,7 +287,7 @@ func (a App) currentWorktreePath() string {
 func (a App) loadDiff() tea.Cmd {
 	wt := a.worktrees[a.selectedWorktree]
 	return func() tea.Msg {
-		files, err := git.GetDiff(wt.Path, "main")
+		files, err := git.GetDiff(wt.Path, a.baseBranch)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -449,7 +449,7 @@ func (a App) viewWorktreeList() string {
 	} else {
 		mainStatus = stylePass.Render(" clean")
 	}
-	mainLine := fmt.Sprintf("%s%-40s%s", mainCursor, "main", mainStatus)
+	mainLine := fmt.Sprintf("%s%-40s%s", mainCursor, a.baseBranch, mainStatus)
 	if a.onMainRow() {
 		mainLine = styleSelected.Width(a.width).Render(mainLine)
 	} else {

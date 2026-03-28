@@ -8,18 +8,40 @@ import (
 	"strings"
 )
 
-// Worktree represents a git worktree with diff stats relative to main.
+// DefaultBranch returns the primary branch name for a repository ("main" or "master").
+// It checks which branch exists locally, preferring "main" if both exist.
+func DefaultBranch(repoDir string) string {
+	// Check if "main" branch exists
+	if exec.Command("git", "-C", repoDir, "rev-parse", "--verify", "main").Run() == nil {
+		return "main"
+	}
+	// Check if "master" branch exists
+	if exec.Command("git", "-C", repoDir, "rev-parse", "--verify", "master").Run() == nil {
+		return "master"
+	}
+	// Fallback: check HEAD of the bare/main worktree
+	out, err := exec.Command("git", "-C", repoDir, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err == nil {
+		branch := strings.TrimSpace(string(out))
+		if branch != "" && branch != "HEAD" {
+			return branch
+		}
+	}
+	return "main"
+}
+
+// Worktree represents a git worktree with diff stats relative to the default branch.
 type Worktree struct {
 	Path           string       // Absolute path to worktree directory
 	Branch         string       // Branch name (e.g. "worktree-auth-fix")
 	CommitHash     string       // HEAD commit short hash
-	FilesChanged   int          // Number of files changed vs main
+	FilesChanged   int          // Number of files changed vs base branch
 	Insertions     int          // Lines added
 	Deletions      int          // Lines deleted
-	CommitsAhead   int          // Commits ahead of main
-	CommitsBehind  int          // Commits behind main
+	CommitsAhead   int          // Commits ahead of base branch
+	CommitsBehind  int          // Commits behind base branch
 	Uncommitted    int          // Number of uncommitted changes (git status)
-	Commits        []CommitInfo // Commits ahead of main (newest first)
+	Commits        []CommitInfo // Commits ahead of base branch (newest first)
 }
 
 // CurrentHash returns the full HEAD hash for a worktree path.
@@ -32,9 +54,9 @@ func CurrentHash(worktreePath string) string {
 }
 
 // ListWorktrees runs `git worktree list --porcelain` in repoDir, parses the
-// output, skips the main (first) worktree, and enriches each entry with diff
-// stats against main.
-func ListWorktrees(repoDir string) ([]Worktree, error) {
+// output, skips the primary (first) worktree, and enriches each entry with diff
+// stats against the base branch.
+func ListWorktrees(repoDir, baseBranch string) ([]Worktree, error) {
 	cmd := exec.Command("git", "-C", repoDir, "worktree", "list", "--porcelain")
 	out, err := cmd.Output()
 	if err != nil {
@@ -47,10 +69,10 @@ func ListWorktrees(repoDir string) ([]Worktree, error) {
 	}
 
 	for i := range worktrees {
-		enrichDiffStats(repoDir, &worktrees[i])
-		enrichCommitCounts(&worktrees[i])
+		enrichDiffStats(baseBranch, &worktrees[i])
+		enrichCommitCounts(baseBranch, &worktrees[i])
 		enrichUncommitted(&worktrees[i])
-		worktrees[i].Commits = listCommits(worktrees[i].Path, "main..HEAD")
+		worktrees[i].Commits = listCommits(worktrees[i].Path, baseBranch+"..HEAD")
 	}
 
 	return worktrees, nil
@@ -92,11 +114,11 @@ func parsePorcelain(output string) ([]Worktree, error) {
 	return worktrees, nil
 }
 
-// enrichDiffStats runs `git diff --stat main..HEAD` inside the worktree
+// enrichDiffStats runs `git diff --stat <baseBranch>..HEAD` inside the worktree
 // directory and parses the summary line for file count, insertions, and
 // deletions.
-func enrichDiffStats(repoDir string, wt *Worktree) {
-	cmd := exec.Command("git", "-C", wt.Path, "diff", "--stat", "main..HEAD")
+func enrichDiffStats(baseBranch string, wt *Worktree) {
+	cmd := exec.Command("git", "-C", wt.Path, "diff", "--stat", baseBranch+"..HEAD")
 	out, err := cmd.Output()
 	if err != nil {
 		// Non-fatal: leave stats at zero.
@@ -115,14 +137,14 @@ func enrichDiffStats(repoDir string, wt *Worktree) {
 }
 
 // enrichCommitCounts runs git rev-list to determine how many commits
-// the worktree is ahead of and behind main.
-func enrichCommitCounts(wt *Worktree) {
-	// Commits ahead: commits in HEAD that aren't in main
-	if out, err := exec.Command("git", "-C", wt.Path, "rev-list", "--count", "main..HEAD").Output(); err == nil {
+// the worktree is ahead of and behind the base branch.
+func enrichCommitCounts(baseBranch string, wt *Worktree) {
+	// Commits ahead: commits in HEAD that aren't in baseBranch
+	if out, err := exec.Command("git", "-C", wt.Path, "rev-list", "--count", baseBranch+"..HEAD").Output(); err == nil {
 		wt.CommitsAhead, _ = strconv.Atoi(strings.TrimSpace(string(out)))
 	}
-	// Commits behind: commits in main that aren't in HEAD
-	if out, err := exec.Command("git", "-C", wt.Path, "rev-list", "--count", "HEAD..main").Output(); err == nil {
+	// Commits behind: commits in baseBranch that aren't in HEAD
+	if out, err := exec.Command("git", "-C", wt.Path, "rev-list", "--count", "HEAD.."+baseBranch).Output(); err == nil {
 		wt.CommitsBehind, _ = strconv.Atoi(strings.TrimSpace(string(out)))
 	}
 }
@@ -144,13 +166,13 @@ func enrichUncommitted(wt *Worktree) {
 	wt.Uncommitted = UncommittedCount(wt.Path)
 }
 
-// SquashOntoMain rebases on main then squashes all commits into one.
+// SquashOntoBase rebases on the base branch then squashes all commits into one.
 // Returns the combined output and any error.
-func SquashOntoMain(worktreePath string) (string, error) {
+func SquashOntoBase(worktreePath, baseBranch string) (string, error) {
 	var allOutput strings.Builder
 
-	// First, rebase onto main to catch up
-	cmd := exec.Command("git", "-C", worktreePath, "rebase", "main")
+	// First, rebase onto base branch to catch up
+	cmd := exec.Command("git", "-C", worktreePath, "rebase", baseBranch)
 	out, err := cmd.CombinedOutput()
 	allOutput.Write(out)
 	if err != nil {
@@ -158,8 +180,8 @@ func SquashOntoMain(worktreePath string) (string, error) {
 		return allOutput.String(), fmt.Errorf("rebase: %s", strings.TrimSpace(string(out)))
 	}
 
-	// Get the commit message from the first commit after main
-	cmd = exec.Command("git", "-C", worktreePath, "log", "--format=%B", "main..HEAD")
+	// Get the commit message from the first commit after base branch
+	cmd = exec.Command("git", "-C", worktreePath, "log", "--format=%B", baseBranch+"..HEAD")
 	msgOut, err := cmd.Output()
 	if err != nil {
 		return allOutput.String(), fmt.Errorf("reading commit messages: %s", strings.TrimSpace(string(out)))
@@ -169,8 +191,8 @@ func SquashOntoMain(worktreePath string) (string, error) {
 		msg = "squashed commits"
 	}
 
-	// Soft reset to main (keeps changes staged)
-	cmd = exec.Command("git", "-C", worktreePath, "reset", "--soft", "main")
+	// Soft reset to base branch (keeps changes staged)
+	cmd = exec.Command("git", "-C", worktreePath, "reset", "--soft", baseBranch)
 	out, err = cmd.CombinedOutput()
 	allOutput.Write(out)
 	if err != nil {
@@ -188,11 +210,11 @@ func SquashOntoMain(worktreePath string) (string, error) {
 	return allOutput.String(), nil
 }
 
-// RebaseOnMain runs git rebase main in the worktree.
+// RebaseOnBase runs git rebase <baseBranch> in the worktree.
 // Returns the combined output and any error. If there are conflicts,
 // the error message will indicate that.
-func RebaseOnMain(worktreePath string) (string, error) {
-	cmd := exec.Command("git", "-C", worktreePath, "rebase", "main")
+func RebaseOnBase(worktreePath, baseBranch string) (string, error) {
+	cmd := exec.Command("git", "-C", worktreePath, "rebase", baseBranch)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// Abort the rebase so the worktree isn't left in a broken state
