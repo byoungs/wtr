@@ -98,29 +98,32 @@ type App struct {
 	// Direct mode
 	mode       string // "worktree" or "direct"
 	branchInfo git.BranchInfo
+
+	// Default branch (main or master)
+	defaultBranch string
 }
 
-// addTempMain appends a temporary "main" worktree entry for git status viewing,
+// addTempDefault appends a temporary default-branch worktree entry for git status viewing,
 // but only if one isn't already present.
-func (a *App) addTempMain() {
+func (a *App) addTempDefault() {
 	for _, wt := range a.worktrees {
-		if wt.Branch == "main" {
+		if wt.Branch == a.defaultBranch {
 			return
 		}
 	}
 	a.worktrees = append(a.worktrees, git.Worktree{
 		Path:        a.repoDir,
-		Branch:      "main",
+		Branch:      a.defaultBranch,
 		CommitHash:  git.CurrentHash(a.repoDir),
 		Uncommitted: a.mainUncommitted,
 	})
 }
 
-// removeTempMain removes the temporary "main" entry from worktrees.
-func (a *App) removeTempMain() {
+// removeTempDefault removes the temporary default-branch entry from worktrees.
+func (a *App) removeTempDefault() {
 	filtered := a.worktrees[:0]
 	for _, wt := range a.worktrees {
-		if wt.Branch != "main" {
+		if wt.Branch != a.defaultBranch {
 			filtered = append(filtered, wt)
 		}
 	}
@@ -141,12 +144,13 @@ func NewApp(repoDir string) App {
 		reviewedAt = make(map[string]string)
 	}
 	return App{
-		repoDir:    repoDir,
-		reviewed:   reviewed,
-		reviewedAt: reviewedAt,
-		sideBySide: false,
-		testStatus: s.TestStatus,
-		testedAt:   s.TestedAt,
+		repoDir:       repoDir,
+		reviewed:      reviewed,
+		reviewedAt:    reviewedAt,
+		sideBySide:    false,
+		testStatus:    s.TestStatus,
+		testedAt:      s.TestedAt,
+		defaultBranch: "main", // updated on first load via DefaultBranch detection
 	}
 }
 
@@ -283,14 +287,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			a.err = msg.err
 		} else {
-			a.flashMsg = "Squashed to 1 commit on main"
+			a.flashMsg = fmt.Sprintf("Squashed to 1 commit on %s", a.defaultBranch)
 		}
 		return a, tea.Batch(a.loadWorktrees(), flashAfter(3*time.Second))
 	case rebaseDoneMsg:
 		if msg.err != nil {
 			a.err = msg.err
 		} else {
-			a.flashMsg = "Rebased on main"
+			a.flashMsg = fmt.Sprintf("Rebased on %s", a.defaultBranch)
 		}
 		return a, tea.Batch(a.loadWorktrees(), flashAfter(3*time.Second))
 	case tea.KeyMsg:
@@ -381,6 +385,7 @@ func (a App) View() string {
 type worktreesLoadedMsg struct {
 	worktrees       []git.Worktree
 	mainUncommitted int
+	defaultBranch   string
 }
 type diffLoadedMsg struct{ files []git.FileDiff }
 type errMsg struct{ err error }
@@ -435,12 +440,16 @@ func tickLandStatus() tea.Cmd {
 
 func (a App) loadWorktrees() tea.Cmd {
 	return func() tea.Msg {
-		wts, err := git.ListWorktrees(a.repoDir)
+		baseBranch, err := git.DefaultBranch(a.repoDir)
+		if err != nil {
+			return errMsg{err}
+		}
+		wts, err := git.ListWorktrees(a.repoDir, baseBranch)
 		if err != nil {
 			return errMsg{err}
 		}
 		mainDirty := git.UncommittedCount(a.repoDir)
-		return worktreesLoadedMsg{worktrees: wts, mainUncommitted: mainDirty}
+		return worktreesLoadedMsg{worktrees: wts, mainUncommitted: mainDirty, defaultBranch: baseBranch}
 	}
 }
 

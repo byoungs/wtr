@@ -39,10 +39,10 @@ func (e statusEntry) Label() string {
 	}
 }
 
-func loadGitStatus(worktreePath string) []statusEntry {
+func loadGitStatus(worktreePath string) ([]statusEntry, error) {
 	out, err := exec.Command("git", "-C", worktreePath, "status", "--short").Output()
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("git status: %w", err)
 	}
 	var entries []statusEntry
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -54,7 +54,7 @@ func loadGitStatus(worktreePath string) []statusEntry {
 			Path:   strings.TrimSpace(line[2:]),
 		})
 	}
-	return entries
+	return entries, nil
 }
 
 var statusScrollY int
@@ -85,7 +85,7 @@ func (a App) updateGitStatus(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				// Reload status
-				a.statusFiles = loadGitStatus(wtPath)
+				a.statusFiles, _ = loadGitStatus(wtPath)
 				if a.statusCursor >= len(a.statusFiles) {
 					a.statusCursor = max(0, len(a.statusFiles)-1)
 				}
@@ -139,7 +139,7 @@ func (a App) updateGitStatus(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, keys.Back):
 			if a.prevScreen == screenWorktreeList {
-				a.removeTempMain()
+				a.removeTempDefault()
 				a.screen = screenWorktreeList
 			} else if a.mode == "direct" && a.prevScreen == screenDirectLanding {
 				a.screen = screenDirectLanding
@@ -159,7 +159,7 @@ func (a App) viewGitStatus() string {
 	if a.selectedWorktree < len(a.worktrees) {
 		branchName = a.worktrees[a.selectedWorktree].Branch
 	} else {
-		branchName = "main"
+		branchName = a.defaultBranch
 	}
 	title := styleTitle.Width(a.width).Render(fmt.Sprintf("Git Status — %s", branchName))
 	b.WriteString(title + "\n")

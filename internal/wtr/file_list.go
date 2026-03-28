@@ -36,7 +36,7 @@ func (a App) updateFileList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		fileListScrollY = 0
 		// Load git status for this worktree
 		wt := a.worktrees[a.selectedWorktree]
-		a.statusFiles = loadGitStatus(wt.Path)
+		a.statusFiles, _ = loadGitStatus(wt.Path)
 		return a, nil
 
 	case tea.KeyMsg:
