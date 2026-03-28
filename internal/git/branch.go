@@ -134,6 +134,17 @@ func listCommits(repoDir string, rangeSpec string) []CommitInfo {
 	return commits
 }
 
+// DefaultBranch returns the name of the default branch ("main" or "master").
+// Returns an error if neither branch exists.
+func DefaultBranch(repoDir string) (string, error) {
+	for _, name := range []string{"main", "master"} {
+		if exec.Command("git", "-C", repoDir, "rev-parse", "--verify", name).Run() == nil {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("no default branch found: neither 'main' nor 'master' exists in %s", repoDir)
+}
+
 // UpstreamRef returns "origin/<branch>" for the current branch.
 // Returns empty string if no upstream is configured.
 func UpstreamRef(repoDir string) string {

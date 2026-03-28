@@ -57,7 +57,12 @@ func (a App) updateDirectLanding(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}, tickLandStatus())
 			}
 		case key.Matches(msg, keys.GitStatus):
-			a.statusFiles = loadGitStatus(a.repoDir)
+			files, err := loadGitStatus(a.repoDir)
+			if err != nil {
+				a.err = err
+				return a, nil
+			}
+			a.statusFiles = files
 			if len(a.statusFiles) > 0 {
 				a.statusCursor = 0
 				a.confirmRevert = false
@@ -91,7 +96,7 @@ func (a App) loadDirectDiff() tea.Cmd {
 func (a App) viewDirectLanding() string {
 	var b strings.Builder
 
-	title := styleTitle.Width(a.width).Render("Development on main")
+	title := styleTitle.Width(a.width).Render(fmt.Sprintf("Development on %s", a.defaultBranch))
 	b.WriteString(title + "\n\n")
 
 	if a.err != nil {

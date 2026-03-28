@@ -32,6 +32,9 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case worktreesLoadedMsg:
 		a.worktrees = msg.worktrees
 		a.mainUncommitted = msg.mainUncommitted
+		if msg.defaultBranch != "" {
+			a.defaultBranch = msg.defaultBranch
+		}
 		// Invalidate test status if code changed since last test
 		for _, wt := range a.worktrees {
 			if testedHash, ok := a.testedAt[wt.Branch]; ok {
@@ -148,10 +151,15 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Batch(a.loadWorktrees(), flashAfter(2*time.Second))
 		case key.Matches(msg, keys.Enter), key.Matches(msg, keys.Right):
 			if a.onMainRow() {
-				a.statusFiles = loadGitStatus(a.repoDir)
+				files, err := loadGitStatus(a.repoDir)
+				if err != nil {
+					a.err = err
+					return a, nil
+				}
+				a.statusFiles = files
 				if len(a.statusFiles) > 0 {
-					a.addTempMain()
-				a.selectedWorktree = len(a.worktrees) - 1
+					a.addTempDefault()
+					a.selectedWorktree = len(a.worktrees) - 1
 					a.statusCursor = 0
 					a.confirmRevert = false
 					a.prevScreen = screenWorktreeList
@@ -164,9 +172,14 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, a.loadDiff()
 			}
 		case key.Matches(msg, keys.GitStatus):
-			a.statusFiles = loadGitStatus(a.repoDir)
+			files, err := loadGitStatus(a.repoDir)
+			if err != nil {
+				a.err = err
+				return a, nil
+			}
+			a.statusFiles = files
 			if len(a.statusFiles) > 0 {
-				a.addTempMain()
+				a.addTempDefault()
 				a.selectedWorktree = len(a.worktrees) - 1
 				a.statusCursor = 0
 				a.confirmRevert = false
@@ -225,7 +238,7 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					_, err := land.Run(a.repoDir, land.Steps(wt.Branch), logFile, func(s land.Step) {})
 					if err == nil {
 						// Fast-forward worktree branch to match main
-						exec.Command("git", "-C", wtPath, "rebase", "main").Run()
+						exec.Command("git", "-C", wtPath, "rebase", a.defaultBranch).Run()
 					}
 					return landDoneMsg{err: err}
 				}, tickLandStatus())
@@ -236,9 +249,9 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !a.checkFresh(wt) {
 					return a, flashAfter(3 * time.Second)
 				}
-				a.flashMsg = fmt.Sprintf("Squashing %s onto main...", wt.Branch)
+				a.flashMsg = fmt.Sprintf("Squashing %s onto %s...", wt.Branch, a.defaultBranch)
 				return a, func() tea.Msg {
-					_, err := git.SquashOntoMain(wt.Path)
+					_, err := git.SquashOntoBase(wt.Path, a.defaultBranch)
 					return squashDoneMsg{err: err}
 				}
 			}
@@ -248,9 +261,9 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !a.checkFresh(wt) {
 					return a, flashAfter(3 * time.Second)
 				}
-				a.flashMsg = fmt.Sprintf("Rebasing %s on main...", wt.Branch)
+				a.flashMsg = fmt.Sprintf("Rebasing %s on %s...", wt.Branch, a.defaultBranch)
 				return a, func() tea.Msg {
-					_, err := git.RebaseOnMain(wt.Path)
+					_, err := git.RebaseOnBase(wt.Path, a.defaultBranch)
 					return rebaseDoneMsg{err: err}
 				}
 			}
@@ -287,7 +300,7 @@ func (a App) currentWorktreePath() string {
 func (a App) loadDiff() tea.Cmd {
 	wt := a.worktrees[a.selectedWorktree]
 	return func() tea.Msg {
-		files, err := git.GetDiff(wt.Path, "main")
+		files, err := git.GetDiff(wt.Path, a.defaultBranch)
 		if err != nil {
 			return errMsg{err}
 		}
@@ -449,7 +462,7 @@ func (a App) viewWorktreeList() string {
 	} else {
 		mainStatus = stylePass.Render(" clean")
 	}
-	mainLine := fmt.Sprintf("%s%-40s%s", mainCursor, "main", mainStatus)
+	mainLine := fmt.Sprintf("%s%-40s%s", mainCursor, a.defaultBranch, mainStatus)
 	if a.onMainRow() {
 		mainLine = styleSelected.Width(a.width).Render(mainLine)
 	} else {
