@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git commit*)",
+        "hook": "Check if on main or master branch. If yes, block with: 'Do not commit directly to main. Use EnterWorktree first, or run /dev to start the pipeline.' Exit code 2 to block."
+      },
+      {
+        "matcher": "Bash(git commit --amend*)",
+        "hook": "Check if HEAD has been pushed to origin (compare HEAD against origin/current-branch). If HEAD is already on origin, block with: 'This commit has already been pushed. Create a new commit instead of amending.' Exit code 2 to block."
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hook": "If the edited file is a .go file, run 'gofmt -w <file>' on it."
+      },
+      {
+        "matcher": "Bash(git commit*)",
+        "hook": "Run 'make test' from the project root. Report results but don't block the commit."
+      }
+    ]
+  }
+}

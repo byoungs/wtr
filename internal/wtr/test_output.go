@@ -137,11 +137,10 @@ func (a App) viewTestOutput() string {
 	passLine := lipgloss.NewStyle().Foreground(colorGreen)
 
 	for _, line := range allLines[testOutputScrollY:end] {
-		lower := strings.ToLower(line)
 		switch {
-		case strings.Contains(lower, "fail") || strings.Contains(lower, "error"):
+		case isFailLine(line):
 			b.WriteString(failLine.Render(line) + "\n")
-		case strings.Contains(lower, "pass") || strings.Contains(lower, "ok "):
+		case isPassLine(line):
 			b.WriteString(passLine.Render(line) + "\n")
 		default:
 			b.WriteString(outputStyle.Render(line) + "\n")
@@ -157,4 +156,86 @@ func (a App) viewTestOutput() string {
 	b.WriteString(styleHelp.Render(helpText))
 
 	return b.String()
+}
+
+// isFailLine returns true if the line indicates an actual failure or error,
+// not just a test name that happens to contain "error" or "fail".
+func isFailLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+
+	// Go test failure markers
+	if strings.HasPrefix(trimmed, "--- FAIL:") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "FAIL\t") || trimmed == "FAIL" {
+		return true
+	}
+
+	// Panic
+	if strings.HasPrefix(trimmed, "panic:") {
+		return true
+	}
+
+	// Go compiler/test errors: file.go:line:col: message
+	// Also matches t.Errorf output (file_test.go:42: msg) which is intentional
+	if isCompilerError(trimmed) {
+		return true
+	}
+
+	// Testify assertion failures
+	if strings.HasPrefix(trimmed, "Error Trace:") ||
+		strings.HasPrefix(trimmed, "Error:") ||
+		strings.HasPrefix(trimmed, "Expected:") ||
+		strings.HasPrefix(trimmed, "Actual:") {
+		return true
+	}
+
+	// Race detector
+	if strings.HasPrefix(trimmed, "WARNING: DATA RACE") {
+		return true
+	}
+
+	// Make errors
+	if strings.HasPrefix(trimmed, "make:") && strings.Contains(trimmed, "Error") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "make[") && strings.Contains(trimmed, "Error") {
+		return true
+	}
+
+	// exit status
+	if strings.Contains(trimmed, "exit status") {
+		return true
+	}
+
+	return false
+}
+
+// isCompilerError detects lines like "file.go:42:5: undefined: foo"
+func isCompilerError(line string) bool {
+	// Must contain .go: followed by a digit (line number)
+	idx := strings.Index(line, ".go:")
+	if idx < 0 || idx+4 >= len(line) {
+		return false
+	}
+	after := line[idx+4:]
+	return len(after) > 0 && after[0] >= '0' && after[0] <= '9'
+}
+
+// isPassLine returns true if the line indicates a passing test or package.
+func isPassLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+
+	// Go test pass markers
+	if strings.HasPrefix(trimmed, "--- PASS:") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "ok  \t") || strings.HasPrefix(trimmed, "ok \t") {
+		return true
+	}
+	if trimmed == "PASS" {
+		return true
+	}
+
+	return false
 }

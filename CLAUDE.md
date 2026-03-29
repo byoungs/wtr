@@ -89,6 +89,13 @@ When adding or changing a keybinding:
 4. Update `internal/wtr/help.go` help screen
 5. Update this CLAUDE.md
 
+## Dev Flow
+Flow: worktree
+- All code changes happen in worktrees, never on main
+- Use /dev to start work (creates worktree automatically)
+- Use /stage to wrap up (prepares clean commit for wtr landing)
+- Brian reviews and lands via wtr (ff-only merge → validate → push)
+
 ## Tech Stack
 
 Go + Bubble Tea (charmbracelet/bubbletea). No database.
