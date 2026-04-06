@@ -39,7 +39,7 @@ func (a App) viewHelp() string {
 			{"t", "Run make validate (background)"},
 			{"o", "View test/validate output"},
 			{"l", "Push to origin (test + validate + push)"},
-			{"u", "Refresh"},
+			{"u", "Update"},
 			{"h / ?", "This help screen"},
 			{"q", "Quit"},
 		}
@@ -57,7 +57,7 @@ func (a App) viewHelp() string {
 			{"r", "Rebase on " + a.defaultBranch},
 			{"s", "Squash to 1 commit on " + a.defaultBranch},
 			{"l", "Land (merge + test + validate + push)"},
-			{"u", "Refresh worktree state"},
+			{"u", "Update worktree state"},
 			{"del", "Delete worktree"},
 			{"h / ?", "This help screen"},
 			{"q", "Quit"},

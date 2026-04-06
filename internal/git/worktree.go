@@ -10,16 +10,16 @@ import (
 
 // Worktree represents a git worktree with diff stats relative to main.
 type Worktree struct {
-	Path           string       // Absolute path to worktree directory
-	Branch         string       // Branch name (e.g. "worktree-auth-fix")
-	CommitHash     string       // HEAD commit short hash
-	FilesChanged   int          // Number of files changed vs main
-	Insertions     int          // Lines added
-	Deletions      int          // Lines deleted
-	CommitsAhead   int          // Commits ahead of main
-	CommitsBehind  int          // Commits behind main
-	Uncommitted    int          // Number of uncommitted changes (git status)
-	Commits        []CommitInfo // Commits ahead of main (newest first)
+	Path          string       // Absolute path to worktree directory
+	Branch        string       // Branch name (e.g. "worktree-auth-fix")
+	CommitHash    string       // HEAD commit short hash
+	FilesChanged  int          // Number of files changed vs main
+	Insertions    int          // Lines added
+	Deletions     int          // Lines deleted
+	CommitsAhead  int          // Commits ahead of main
+	CommitsBehind int          // Commits behind main
+	Uncommitted   int          // Number of uncommitted changes (git status)
+	Commits       []CommitInfo // Commits ahead of main (newest first)
 }
 
 // CurrentHash returns the full HEAD hash for a worktree path.
@@ -188,16 +188,13 @@ func SquashOntoBase(worktreePath, baseBranch string) (string, error) {
 	return allOutput.String(), nil
 }
 
-// RebaseOnBase runs git rebase <baseBranch> in the worktree.
-// Returns the combined output and any error. If there are conflicts,
-// the error message will indicate that.
+// RebaseOnBase fast-forwards the worktree branch onto baseBranch.
+// Only succeeds if it's a clean fast-forward (no conflicts, no rewriting).
 func RebaseOnBase(worktreePath, baseBranch string) (string, error) {
-	cmd := exec.Command("git", "-C", worktreePath, "rebase", baseBranch)
+	cmd := exec.Command("git", "-C", worktreePath, "merge", "--ff-only", baseBranch)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		// Abort the rebase so the worktree isn't left in a broken state
-		exec.Command("git", "-C", worktreePath, "rebase", "--abort").Run()
-		return string(out), fmt.Errorf("rebase failed (aborted): %w\n%s", err, out)
+		return string(out), fmt.Errorf("not a clean fast-forward: %s", strings.TrimSpace(string(out)))
 	}
 	return string(out), nil
 }

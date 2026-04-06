@@ -80,7 +80,7 @@ func TestDirectLandingView_ShowsTestStatus(t *testing.T) {
 }
 
 func TestDirectLandingNavbar(t *testing.T) {
-	navbar := "  q:quit  h:help  →review  g:status  t:test  o:output  l:push  u:refresh"
+	navbar := "  q:quit  h:help  →review  g:status  t:test  o:output  l:push  u:update"
 	expected := []string{"q:", "h:", "→review", "g:", "t:", "o:", "l:", "u:"}
 	for _, e := range expected {
 		if !strings.Contains(navbar, e) {

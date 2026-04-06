@@ -130,7 +130,7 @@ func boundKeys(bindings ...key.Binding) map[string]bool {
 
 func TestNavbarMentionsAllHandledKeys_WorktreeList(t *testing.T) {
 	// The worktree list navbar should mention all action keys
-	navbar := "  q:quit  h:help  →review  e:edit  t:test  o:output  r:rebase  l:land  del:delete  u:refresh"
+	navbar := "  q:quit  h:help  →review  e:edit  t:test  o:output  r:rebase  l:land  del:delete  u:update"
 
 	expected := []struct {
 		label   string
@@ -143,7 +143,7 @@ func TestNavbarMentionsAllHandledKeys_WorktreeList(t *testing.T) {
 		{"rebase", "r:"},
 		{"land", "l:"},
 		{"delete", "del:"},
-		{"refresh", "u:"},
+		{"update", "u:"},
 		{"help", "h:"},
 		{"quit", "q:"},
 	}

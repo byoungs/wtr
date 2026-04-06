@@ -20,7 +20,7 @@ var wtListScrollY int
 func (a *App) checkFresh(wt git.Worktree) bool {
 	currentHash := git.CurrentHash(wt.Path)
 	if currentHash != "" && currentHash != wt.CommitHash {
-		a.flashMsg = fmt.Sprintf("⚠ %s changed (was %.7s, now %.7s) — press u to refresh",
+		a.flashMsg = fmt.Sprintf("⚠ %s changed (was %.7s, now %.7s) — press u to update",
 			wt.Branch, wt.CommitHash, currentHash)
 		return false
 	}
@@ -147,7 +147,7 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.selectedWorktree++
 			}
 		case key.Matches(msg, keys.Refresh):
-			a.flashMsg = "Refreshing..."
+			a.flashMsg = "Updating..."
 			return a, tea.Batch(a.loadWorktrees(), flashAfter(2*time.Second))
 		case key.Matches(msg, keys.Enter), key.Matches(msg, keys.Right):
 			if a.onMainRow() {
@@ -228,20 +228,7 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !a.checkFresh(wt) {
 					return a, flashAfter(3 * time.Second)
 				}
-				a.landing = true
-				a.landBranch = wt.Branch
-				a.landStep = ""
-				a.landStarted = time.Now()
-				logFile := runner.LogPath(a.repoDir, wt.Branch)
-				wtPath := wt.Path
-				return a, tea.Batch(func() tea.Msg {
-					_, err := land.Run(a.repoDir, land.Steps(wt.Branch), logFile, func(s land.Step) {})
-					if err == nil {
-						// Fast-forward worktree branch to match main
-						exec.Command("git", "-C", wtPath, "rebase", a.defaultBranch).Run()
-					}
-					return landDoneMsg{err: err}
-				}, tickLandStatus())
+				return a.prepareLand(land.Steps(wt.Branch), a.selectedWorktree)
 			}
 		case key.Matches(msg, keys.Squash):
 			if len(a.worktrees) > 0 {
@@ -295,7 +282,6 @@ func (a App) currentWorktreePath() string {
 	}
 	return a.worktrees[a.selectedWorktree].Path
 }
-
 
 func (a App) loadDiff() tea.Cmd {
 	wt := a.worktrees[a.selectedWorktree]
@@ -483,6 +469,12 @@ func (a App) viewWorktreeList() string {
 		b.WriteString("\n")
 	}
 
+	if a.confirmLand {
+		b.WriteString(styleRunning.Render("  "+a.confirmLandMsg+" ") +
+			styleHelp.Render("y: proceed  any other key: cancel") + "\n")
+		b.WriteString("\n")
+	}
+
 	if a.confirmQuit {
 		b.WriteString(styleFail.Render("  Landing in progress — quit anyway? ") +
 			styleHelp.Render("y: quit  any other key: cancel") + "\n")
@@ -548,7 +540,7 @@ func (a App) viewWorktreeList() string {
 	}
 
 	padToBottom(&b, a.height, strings.Count(b.String(), "\n"))
-	b.WriteString(styleHelp.Render("  q:quit  h:help  →review  e:edit  t:test  o:output  r:rebase  l:land  del:delete  g:status  u:refresh"))
+	b.WriteString(styleHelp.Render("  q:quit  h:help  →review  e:edit  t:test  o:output  r:rebase  l:land  del:delete  g:status  u:update"))
 
 	return b.String()
 }

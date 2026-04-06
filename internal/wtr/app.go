@@ -3,11 +3,13 @@ package wtr
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/byoungs/wtr/internal/git"
+	"github.com/byoungs/wtr/internal/land"
 	"github.com/byoungs/wtr/internal/runner"
 	"github.com/byoungs/wtr/internal/state"
 	tea "github.com/charmbracelet/bubbletea"
@@ -45,10 +47,10 @@ const (
 )
 
 type App struct {
-	screen           screen
-	repoDir          string
-	width            int
-	height           int
+	screen  screen
+	repoDir string
+	width   int
+	height  int
 
 	// State
 	worktrees        []git.Worktree
@@ -59,17 +61,22 @@ type App struct {
 	reviewedAt       map[string]string // branch -> commit hash when reviews were done
 	sideBySide       bool
 	err              error
+	lastScreen       screen
 
 	// Test status per worktree
 	testStatus map[string]int    // 0=none, 1=running, 2=passed, 3=failed
 	testedAt   map[string]string // branch -> commit hash when tested
 
 	// Land state
-	landing     bool
-	landBranch  string
-	landStep    string
-	landResults []string
-	landStarted time.Time
+	landing          bool
+	landBranch       string
+	landStep         string
+	landResults      []string
+	landStarted      time.Time
+	confirmLand      bool
+	confirmLandMsg   string
+	confirmLandSteps []land.Step
+	confirmLandWtIdx int // worktree index for worktree-mode land
 
 	// Delete: 0=idle, 1=trying, 2=force prompt (typing "force")
 	deleteState int
@@ -83,10 +90,10 @@ type App struct {
 	prevScreen screen
 
 	// Git status screen
-	statusFiles    []statusEntry
-	statusCursor   int
-	confirmRevert  bool
-	confirmQuit    bool
+	statusFiles   []statusEntry
+	statusCursor  int
+	confirmRevert bool
+	confirmQuit   bool
 
 	// Main branch info
 	mainUncommitted int
@@ -133,6 +140,49 @@ func (a *App) removeTempDefault() {
 	}
 }
 
+// prepareLand checks for missing make targets and either starts land directly
+// or sets up a confirmation prompt. wtIdx is the worktree index (-1 for direct mode).
+func (a App) prepareLand(steps []land.Step, wtIdx int) (tea.Model, tea.Cmd) {
+	filtered, missing := land.FilterMissingTargets(a.repoDir, steps)
+	if len(missing) > 0 {
+		a.confirmLand = true
+		a.confirmLandMsg = fmt.Sprintf("make %s not found — proceed without?", strings.Join(missing, ", "))
+		a.confirmLandSteps = filtered
+		a.confirmLandWtIdx = wtIdx
+		return a, nil
+	}
+	return a.startLand(steps, wtIdx)
+}
+
+// startLand begins the land process with the given steps.
+func (a App) startLand(steps []land.Step, wtIdx int) (tea.Model, tea.Cmd) {
+	a.landing = true
+	a.landStep = ""
+	a.landStarted = time.Now()
+
+	if wtIdx >= 0 {
+		wt := a.worktrees[wtIdx]
+		a.landBranch = wt.Branch
+		logFile := runner.LogPath(a.repoDir, wt.Branch)
+		wtPath := wt.Path
+		return a, tea.Batch(func() tea.Msg {
+			_, err := land.Run(a.repoDir, steps, logFile, func(s land.Step) {})
+			if err == nil {
+				exec.Command("git", "-C", wtPath, "rebase", a.defaultBranch).Run()
+			}
+			return landDoneMsg{err: err}
+		}, tickLandStatus())
+	}
+
+	// Direct mode
+	a.landBranch = a.branchInfo.Name
+	logFile := runner.LogPath(a.repoDir, a.branchInfo.Name)
+	return a, tea.Batch(func() tea.Msg {
+		_, err := land.Run(a.repoDir, steps, logFile, func(s land.Step) {})
+		return landDoneMsg{err: err}
+	}, tickLandStatus())
+}
+
 func NewApp(repoDir string) App {
 	s := state.Load(repoDir)
 	reviewed := s.Reviewed
@@ -176,6 +226,22 @@ func (a App) saveState() {
 }
 
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Auto-refresh when arriving at a landing screen
+	if a.screen != a.lastScreen {
+		a.lastScreen = a.screen
+		var refreshCmd tea.Cmd
+		switch a.screen {
+		case screenWorktreeList:
+			refreshCmd = a.loadWorktrees()
+		case screenDirectLanding:
+			refreshCmd = a.loadBranchInfo()
+		}
+		if refreshCmd != nil {
+			m, cmd := a.Update(msg)
+			return m, tea.Batch(cmd, refreshCmd)
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
@@ -304,6 +370,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, tea.Quit
 			}
 			a.confirmQuit = false
+			return a, nil
+		}
+		// Handle land confirmation (missing make targets)
+		if a.confirmLand {
+			if msg.String() == "y" || msg.String() == "Y" {
+				a.confirmLand = false
+				return a.startLand(a.confirmLandSteps, a.confirmLandWtIdx)
+			}
+			a.confirmLand = false
 			return a, nil
 		}
 		if msg.Type == tea.KeyCtrlC {

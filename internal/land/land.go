@@ -33,6 +33,28 @@ func DirectSteps() []Step {
 	}
 }
 
+// HasMakeTarget checks if the Makefile in repoDir has the given target.
+func HasMakeTarget(repoDir, target string) bool {
+	cmd := exec.Command("make", "-n", target)
+	cmd.Dir = repoDir
+	return cmd.Run() == nil
+}
+
+// FilterMissingTargets removes make steps whose targets don't exist in the Makefile.
+// Returns the filtered steps and the names of removed steps.
+func FilterMissingTargets(repoDir string, steps []Step) ([]Step, []string) {
+	var filtered []Step
+	var missing []string
+	for _, s := range steps {
+		if s.Command == "make" && !HasMakeTarget(repoDir, s.Args[0]) {
+			missing = append(missing, s.Name)
+			continue
+		}
+		filtered = append(filtered, s)
+	}
+	return filtered, missing
+}
+
 type StepResult struct {
 	Step   Step
 	Output string

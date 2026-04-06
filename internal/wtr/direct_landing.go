@@ -46,15 +46,7 @@ func (a App) updateDirectLanding(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, keys.Land):
 			if a.branchInfo.AheadOrigin > 0 && !a.landing {
-				a.landing = true
-				a.landBranch = a.branchInfo.Name
-				a.landStep = ""
-				a.landStarted = time.Now()
-				logFile := runner.LogPath(a.repoDir, a.branchInfo.Name)
-				return a, tea.Batch(func() tea.Msg {
-					_, err := land.Run(a.repoDir, land.DirectSteps(), logFile, func(s land.Step) {})
-					return landDoneMsg{err: err}
-				}, tickLandStatus())
+				return a.prepareLand(land.DirectSteps(), -1)
 			}
 		case key.Matches(msg, keys.GitStatus):
 			files, err := loadGitStatus(a.repoDir)
@@ -71,7 +63,7 @@ func (a App) updateDirectLanding(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 		case key.Matches(msg, keys.Refresh):
-			a.flashMsg = "Refreshing..."
+			a.flashMsg = "Updating..."
 			return a, tea.Batch(a.loadBranchInfo(), flashAfter(2*time.Second))
 		}
 	}
@@ -165,6 +157,12 @@ func (a App) viewDirectLanding() string {
 		b.WriteString("\n")
 	}
 
+	if a.confirmLand {
+		b.WriteString(styleRunning.Render("  "+a.confirmLandMsg+" ") +
+			styleHelp.Render("y: proceed  any other key: cancel") + "\n")
+		b.WriteString("\n")
+	}
+
 	if a.confirmQuit {
 		b.WriteString(styleFail.Render("  Push in progress — quit anyway? ") +
 			styleHelp.Render("y: quit  any other key: cancel") + "\n")
@@ -204,7 +202,7 @@ func (a App) viewDirectLanding() string {
 	}
 
 	padToBottom(&b, a.height, strings.Count(b.String(), "\n"))
-	b.WriteString(styleHelp.Render("  q:quit  h:help  →review  g:status  t:test  o:output  l:push  u:refresh"))
+	b.WriteString(styleHelp.Render("  q:quit  h:help  →review  g:status  t:test  o:output  l:push  u:update"))
 
 	return b.String()
 }
