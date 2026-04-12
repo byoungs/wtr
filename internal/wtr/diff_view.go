@@ -13,8 +13,42 @@ import (
 // diffScrollY tracks vertical scroll position for the diff view.
 // Package-level var is fine for a single-instance TUI.
 var diffScrollY int
-var diffTotalLines int    // set during render, used to detect "scrolled to bottom"
+var diffTotalLines int      // set during render, used to detect "scrolled to bottom"
 var diffHunkPositions []int // line indices of hunk headers, set during render
+
+// minWrapWidth is the smallest terminal width at which unified diff lines are
+// soft-wrapped. Below this, long lines overflow (same as before). Wrapping a
+// line into 5+ visual rows on a very narrow terminal creates more confusion
+// than overflow does, so the threshold opts out of wrapping when the gutter
+// would leave too little content room to be useful.
+const minWrapWidth = 80
+
+// unifiedGutterWidth is the number of columns consumed by the line-number
+// gutter in unified diffs: two 4-wide numbers, a space between them, and a
+// trailing space before the content ("1234 5678 ").
+const unifiedGutterWidth = 10
+
+// wrapContent splits content into rune-chunks of at most width runes.
+// Returns a single-element slice ([]string{content}) when wrapping is disabled
+// or unnecessary. Wraps by rune count so multi-byte characters stay intact.
+func wrapContent(content string, width int, wrap bool) []string {
+	if !wrap || width <= 0 {
+		return []string{content}
+	}
+	runes := []rune(content)
+	if len(runes) <= width {
+		return []string{content}
+	}
+	var chunks []string
+	for i := 0; i < len(runes); i += width {
+		end := i + width
+		if end > len(runes) {
+			end = len(runes)
+		}
+		chunks = append(chunks, string(runes[i:end]))
+	}
+	return chunks
+}
 
 func (a App) updateDiffView(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -365,6 +399,9 @@ func (a App) renderUnified(f git.FileDiff) string {
 		viewHeight = 1
 	}
 
+	wrap := a.width >= minWrapWidth
+	contentWidth := a.width - unifiedGutterWidth
+
 	var allLines []string
 	var hunkPositions []int
 
@@ -376,6 +413,10 @@ func (a App) renderUnified(f git.FileDiff) string {
 
 		for _, line := range hunk.Lines {
 			var prefix, numStr string
+			// Gutter format: 9 chars (two %4d separated by a space). Combined
+			// with the trailing space in renderUnifiedDiffLine, this must
+			// match unifiedGutterWidth — widen both together if files with
+			// >9999 lines become a concern.
 			switch line.Type {
 			case git.LineContext:
 				prefix = " "
@@ -392,17 +433,7 @@ func (a App) renderUnified(f git.FileDiff) string {
 				newNum++
 			}
 
-			numStyled := lipgloss.NewStyle().Foreground(colorSubtle).Render(numStr)
-			var contentStyled string
-			switch line.Type {
-			case git.LineAdded:
-				contentStyled = styleAdded.Render(prefix + line.Content)
-			case git.LineRemoved:
-				contentStyled = styleRemoved.Render(prefix + line.Content)
-			default:
-				contentStyled = styleContext.Render(prefix + line.Content)
-			}
-			allLines = append(allLines, numStyled+" "+contentStyled)
+			allLines = append(allLines, renderUnifiedDiffLine(numStr, prefix, line.Content, line.Type, contentWidth, wrap)...)
 		}
 	}
 
@@ -423,4 +454,34 @@ func (a App) renderUnified(f git.FileDiff) string {
 	visible := allLines[diffScrollY:end]
 
 	return strings.Join(visible, "\n")
+}
+
+// renderUnifiedDiffLine produces one or more visual lines for a single unified
+// diff line. When wrap is enabled and prefix+content exceeds contentWidth, the
+// output splits into multiple rows. The first row shows the line-number gutter
+// and the prefix character; continuation rows show a blank gutter and carry
+// the same color styling so wrapped content is still identifiable as
+// added/removed/context.
+func renderUnifiedDiffLine(numStr, prefix, content string, lineType git.LineType, contentWidth int, wrap bool) []string {
+	numStyled := lipgloss.NewStyle().Foreground(colorSubtle).Render(numStr)
+	blankGutter := lipgloss.NewStyle().Foreground(colorSubtle).Render(strings.Repeat(" ", len(numStr)))
+
+	style := styleContext
+	switch lineType {
+	case git.LineAdded:
+		style = styleAdded
+	case git.LineRemoved:
+		style = styleRemoved
+	}
+
+	chunks := wrapContent(prefix+content, contentWidth, wrap)
+	lines := make([]string, 0, len(chunks))
+	for i, chunk := range chunks {
+		gutter := numStyled
+		if i > 0 {
+			gutter = blankGutter
+		}
+		lines = append(lines, gutter+" "+style.Render(chunk))
+	}
+	return lines
 }

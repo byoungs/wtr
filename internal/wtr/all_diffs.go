@@ -57,6 +57,9 @@ func (a App) viewAllDiffs() string {
 		fmt.Sprintf("All diffs — %s  (%d files)", wt.Branch, len(a.files)))
 	b.WriteString(title + "\n")
 
+	wrap := a.width >= minWrapWidth
+	contentWidth := a.width - unifiedGutterWidth
+
 	// Build all rendered lines across all files
 	var allLines []string
 
@@ -123,17 +126,7 @@ func (a App) viewAllDiffs() string {
 					newNum++
 				}
 
-				numStyled := lipgloss.NewStyle().Foreground(colorSubtle).Render(numStr)
-				var contentStyled string
-				switch line.Type {
-				case git.LineAdded:
-					contentStyled = styleAdded.Render(prefix + line.Content)
-				case git.LineRemoved:
-					contentStyled = styleRemoved.Render(prefix + line.Content)
-				default:
-					contentStyled = styleContext.Render(prefix + line.Content)
-				}
-				allLines = append(allLines, numStyled+" "+contentStyled)
+				allLines = append(allLines, renderUnifiedDiffLine(numStr, prefix, line.Content, line.Type, contentWidth, wrap)...)
 			}
 		}
 
