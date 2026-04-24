@@ -153,6 +153,112 @@ func Clean(repoDir, branch string) {
 	os.Remove(pidPath(repoDir, branch))
 }
 
+// --- make dev (long-running server) ---
+
+func devLogPath(repoDir, branch string) string {
+	return filepath.Join(repoDir, wtrDir, branch+".dev.log")
+}
+
+func devPidPath(repoDir, branch string) string {
+	return filepath.Join(repoDir, wtrDir, branch+".dev.pid")
+}
+
+// DevLogPath returns the path to the make-dev log for a branch.
+func DevLogPath(repoDir, branch string) string {
+	return devLogPath(repoDir, branch)
+}
+
+// StartDev launches `make dev` in the worktree as a detached process group.
+// Output streams to .git/wtr/<branch>.dev.log. No status file — the process is
+// expected to run until killed via KillDev.
+func StartDev(repoDir, worktreePath, branch string) error {
+	dir := filepath.Join(repoDir, wtrDir)
+	os.MkdirAll(dir, 0755)
+
+	logFile := devLogPath(repoDir, branch)
+	pidFile := devPidPath(repoDir, branch)
+
+	os.Remove(logFile)
+	os.WriteFile(logFile, []byte{}, 0644)
+
+	script := fmt.Sprintf(
+		`if make -n dev >/dev/null 2>&1; then exec make dev >>%q 2>&1; else echo "No dev target found." >>%q; exit 1; fi`,
+		logFile, logFile,
+	)
+
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Dir = worktreePath
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+	if err := cmd.Start(); err != nil {
+		debugLog(repoDir, "[dev start] branch=%s err=%v", branch, err)
+		return fmt.Errorf("starting make dev: %w", err)
+	}
+
+	pid := cmd.Process.Pid
+	debugLog(repoDir, "[dev start] branch=%s pid=%d dir=%s", branch, pid, worktreePath)
+	os.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644)
+	cmd.Process.Release()
+	return nil
+}
+
+// ReadDevLog returns the current contents of the dev log.
+func ReadDevLog(repoDir, branch string) string {
+	data, err := os.ReadFile(devLogPath(repoDir, branch))
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// DevIsRunning returns true if a make-dev process is alive for the branch.
+func DevIsRunning(repoDir, branch string) bool {
+	data, err := os.ReadFile(devPidPath(repoDir, branch))
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
+}
+
+// KillDev terminates the make-dev process group for the branch. Safe to call
+// when nothing is running.
+func KillDev(repoDir, branch string) {
+	data, err := os.ReadFile(devPidPath(repoDir, branch))
+	if err != nil {
+		return
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		os.Remove(devPidPath(repoDir, branch))
+		return
+	}
+	// Kill the whole process group (Setsid made pid == pgid).
+	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
+		debugLog(repoDir, "[dev kill] branch=%s pgid=%d SIGTERM err=%v", branch, pid, err)
+	}
+	// Give it a moment, then force-kill if still alive.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if syscall.Kill(-pid, syscall.Signal(0)) != nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if syscall.Kill(-pid, syscall.Signal(0)) == nil {
+		syscall.Kill(-pid, syscall.SIGKILL)
+	}
+	os.Remove(devPidPath(repoDir, branch))
+	debugLog(repoDir, "[dev kill] branch=%s pgid=%d done", branch, pid)
+}
+
 // debugLog appends a timestamped line to .git/wtr/debug.log.
 func debugLog(repoDir, format string, args ...any) {
 	dir := filepath.Join(repoDir, wtrDir)

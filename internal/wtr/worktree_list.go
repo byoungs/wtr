@@ -207,6 +207,20 @@ func (a App) updateWorktreeList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.flashMsg = fmt.Sprintf("Running make validate in %s...", wt.Branch)
 				return a, tea.Batch(flashAfter(2*time.Second), tickTestStatus())
 			}
+		case key.Matches(msg, keys.DevServer):
+			if len(a.worktrees) > 0 && !a.onMainRow() {
+				wt := a.worktrees[a.selectedWorktree]
+				if !runner.DevIsRunning(a.repoDir, wt.Branch) {
+					if err := runner.StartDev(a.repoDir, wt.Path, wt.Branch); err != nil {
+						a.err = err
+						return a, nil
+					}
+				}
+				a.prevScreen = a.screen
+				a.screen = screenDevOutput
+				devOutputFollow = true
+				return a, tickDev()
+			}
 		case key.Matches(msg, keys.ViewOutput):
 			if len(a.worktrees) > 0 {
 				wt := a.worktrees[a.selectedWorktree]
@@ -540,7 +554,7 @@ func (a App) viewWorktreeList() string {
 	}
 
 	padToBottom(&b, a.height, strings.Count(b.String(), "\n"))
-	b.WriteString(styleHelp.Render("  q:quit  h:help  →review  e:edit  t:test  o:output  r:rebase  l:land  del:delete  g:status  u:update"))
+	b.WriteString(styleHelp.Render("  q:quit  h:help  →review  e:edit  t:test  m:dev  o:output  r:rebase  l:land  del:delete  g:status  u:update"))
 
 	return b.String()
 }

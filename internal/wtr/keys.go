@@ -30,6 +30,7 @@ type keyMap struct {
 	Revert       key.Binding
 	Right        key.Binding
 	Search       key.Binding
+	DevServer    key.Binding
 }
 
 var keys = keyMap{
@@ -61,4 +62,5 @@ var keys = keyMap{
 	Revert:       key.NewBinding(key.WithKeys("delete", "backspace"), key.WithHelp("del", "revert/delete")),
 	Right:        key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "drill in")),
 	Search:       key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search files")),
+	DevServer:    key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "make dev")),
 }

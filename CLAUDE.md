@@ -48,6 +48,7 @@ wtr auto-detects which mode to use:
 - `→`/`enter`: review files
 - `e`: edit worktree in VS Code
 - `t`: run make validate (background, survives exit)
+- `m`: run make dev on selected worktree (esc kills it)
 - `o`: view test/validate output
 - `r`: rebase on main
 - `s`: squash to 1 commit on main

@@ -53,6 +53,7 @@ func (a App) viewHelp() string {
 			{"→ / enter", "Review files in worktree"},
 			{"e", "Edit worktree in VS Code"},
 			{"t", "Run make test e2e (background)"},
+			{"m", "Run make dev (esc kills it)"},
 			{"o", "View test/validate output"},
 			{"r", "Rebase on " + a.defaultBranch},
 			{"s", "Squash to 1 commit on " + a.defaultBranch},

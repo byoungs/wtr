@@ -44,6 +44,7 @@ const (
 	screenTestOutput
 	screenGitStatus
 	screenDirectLanding
+	screenDevOutput
 )
 
 type App struct {
@@ -264,6 +265,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a.updateTestOutput(msg)
 		}
 		return a, nil
+	case devTickMsg:
+		if a.screen == screenDevOutput {
+			return a.updateDevOutput(msg)
+		}
+		return a, nil
 	case testDoneMsg:
 		// Background process finished — read status from disk
 		status := runner.ReadStatus(a.repoDir, msg.branch)
@@ -406,6 +412,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.screen == screenTestOutput {
 			return a.updateTestOutput(msg)
 		}
+		if a.screen == screenDevOutput {
+			return a.updateDevOutput(msg)
+		}
 		if a.screen == screenGitStatus {
 			return a.updateGitStatus(msg)
 		}
@@ -452,6 +461,8 @@ func (a App) View() string {
 		return a.viewGitStatus()
 	case screenDirectLanding:
 		return a.viewDirectLanding()
+	case screenDevOutput:
+		return a.viewDevOutput()
 	}
 	return ""
 }
